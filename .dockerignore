@@ -1,0 +1,17 @@
+# Ignore Maven local build artifacts (Docker builds inside builder stage)
+target/
+
+# Ignore local database repository data
+.timegraph/
+
+# Git & IDE metadata
+.git/
+.gitignore
+.idea/
+*.iml
+.vscode/
+
+# OS files & Documentation
+.DS_Store
+Thumbs.db
+README.md

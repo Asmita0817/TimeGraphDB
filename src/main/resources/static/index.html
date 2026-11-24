@@ -1,0 +1,1818 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TimeGraph DB - Version-Controlled Relational Database</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#eef2ff',
+                            100: '#e0e7ff',
+                            400: '#818cf8',
+                            500: '#6366f1',
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                        },
+                        darkbg: '#0a0d14',
+                        cardbg: '#111726',
+                        cardborder: '#1f293d',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background-color: #0a0d14; color: #e2e8f0; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+        .node-pulse {
+            animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse-ring {
+            0%, 100% { opacity: 0.8; transform: scale(1); }
+            50% { opacity: 0.2; transform: scale(1.4); }
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col font-sans">
+
+    <!-- Top Navigation Bar -->
+    <header class="border-b border-cardborder bg-cardbg px-6 py-3 flex flex-wrap items-center justify-between gap-4 sticky top-0 z-30 shadow-lg">
+        <div class="flex items-center space-x-3">
+            <div class="h-10 w-10 rounded-xl bg-gradient-to-tr from-brand-600 via-indigo-500 to-cyan-400 flex items-center justify-center shadow-indigo-500/30 shadow-md">
+                <i class="fa-solid fa-network-wired text-white text-lg"></i>
+            </div>
+            <div>
+                <div class="flex items-center space-x-2">
+                    <span class="font-bold text-lg tracking-tight text-white">TimeGraph<span class="text-cyan-400">DB</span></span>
+                    <span class="text-[10px] uppercase font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-0.5 rounded-full">v1.0.0</span>
+                </div>
+                <p class="text-xs text-slate-400">Version-Controlled Content-Addressable Relational Database</p>
+            </div>
+        </div>
+
+        <!-- VCS Active Status Indicators & Controls -->
+        <div class="flex items-center flex-wrap gap-2.5">
+            <!-- Active Branch Selector -->
+            <div class="flex items-center bg-slate-900 border border-slate-700/60 rounded-lg px-2.5 py-1.5 shadow-inner">
+                <i class="fa-solid fa-code-branch text-indigo-400 text-xs mr-2"></i>
+                <span class="text-xs text-slate-400 mr-2">Branch:</span>
+                <select id="branchSelector" onchange="switchBranch(this.value)" class="bg-transparent text-xs font-semibold text-white focus:outline-none cursor-pointer">
+                    <option value="" disabled selected>Loading...</option>
+                </select>
+            </div>
+
+            <!-- HEAD Commit Badge -->
+            <div class="flex items-center bg-slate-900 border border-slate-700/60 rounded-lg px-2.5 py-1.5 shadow-inner" title="Click to copy full commit hash" onclick="copyHeadHash()">
+                <i class="fa-solid fa-cube text-cyan-400 text-xs mr-1.5"></i>
+                <span class="text-xs text-slate-400 mr-1.5">HEAD:</span>
+                <span id="headHashDisplay" class="font-mono text-xs text-cyan-300 font-medium cursor-pointer hover:underline">-------</span>
+            </div>
+
+            <!-- Staged changes indicator -->
+            <div id="stagedBadge" class="hidden items-center bg-amber-500/10 border border-amber-500/30 rounded-lg px-2.5 py-1.5 text-xs text-amber-300 font-medium">
+                <i class="fa-solid fa-circle-dot text-[10px] text-amber-400 mr-1.5 animate-pulse"></i>
+                Uncommitted Changes
+            </div>
+
+            <!-- Action Buttons -->
+            <button onclick="openModal('branchModal')" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium px-3 py-1.5 rounded-lg border border-slate-700 transition flex items-center shadow-sm">
+                <i class="fa-solid fa-code-branch text-xs mr-1.5 text-indigo-400"></i> New Branch
+            </button>
+            <button onclick="openModal('commitModal')" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium px-3.5 py-1.5 rounded-lg transition flex items-center shadow-md shadow-indigo-600/20">
+                <i class="fa-solid fa-check text-xs mr-1.5"></i> Commit Snapshot
+            </button>
+
+            <!-- Reset & Clear Dropdown Menu -->
+            <div class="relative inline-block text-left">
+                <button onclick="toggleMenu('dbActionsMenu')" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs px-2.5 py-1.5 rounded-lg border border-slate-700 transition flex items-center gap-1.5">
+                    <i class="fa-solid fa-gear text-slate-400"></i>
+                    <span>Manage DB</span>
+                    <i class="fa-solid fa-chevron-down text-[10px]"></i>
+                </button>
+                <div id="dbActionsMenu" class="hidden absolute right-0 mt-2 w-52 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl py-1.5 z-50">
+                    <button onclick="resetDemoData(); toggleMenu('dbActionsMenu');" class="w-full text-left px-4 py-2 text-xs text-slate-200 hover:bg-slate-800 flex items-center gap-2">
+                        <i class="fa-solid fa-rotate-right text-cyan-400"></i> Reset to Sample Dataset
+                    </button>
+                    <button onclick="clearFreshDatabase(); toggleMenu('dbActionsMenu');" class="w-full text-left px-4 py-2 text-xs text-rose-300 hover:bg-slate-800 flex items-center gap-2">
+                        <i class="fa-solid fa-trash-can text-rose-400"></i> Clear DB (Build From Scratch)
+                    </button>
+                </div>
+            </div>
+
+            <!-- Author / Session Collaboration Badge & Switcher -->
+            <div class="flex items-center space-x-2 pl-2 border-l border-slate-700/60">
+                <div id="userBadge" class="hidden items-center bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs">
+                    <div id="userAvatar" class="h-5 w-5 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 text-white flex items-center justify-center font-bold text-[10px] mr-1.5 shadow-sm">U</div>
+                    <div class="flex flex-col text-left mr-1">
+                        <span id="userDisplayName" class="font-bold text-slate-200 text-[11px] leading-tight">User</span>
+                        <span id="userRoleBadge" class="text-[9px] text-indigo-400 font-semibold leading-none">Role</span>
+                    </div>
+                </div>
+                <button onclick="handleAuthButtonClick()" id="authActionBtn" class="bg-indigo-950/60 hover:bg-indigo-900/80 text-indigo-300 hover:text-white text-xs px-2.5 py-1.5 rounded-lg border border-indigo-500/40 transition flex items-center gap-1.5 shadow-sm">
+                    <i class="fa-solid fa-user-circle text-xs"></i>
+                    <span id="authBtnLabel">Sign In</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Workspace Container -->
+    <div class="flex-1 flex overflow-hidden">
+
+        <!-- Sidebar: Visual Interactive Commit DAG & Schema (Left Pane) -->
+        <aside class="w-84 md:w-96 border-r border-cardborder bg-cardbg/90 flex flex-col shrink-0">
+            <!-- Sidebar Header Tabs -->
+            <div class="flex border-b border-cardborder px-3 pt-2">
+                <button id="tabDagBtn" onclick="switchSidebarTab('dag')" class="flex-1 pb-2.5 text-xs font-semibold text-indigo-400 border-b-2 border-indigo-500 flex items-center justify-center gap-1.5">
+                    <i class="fa-solid fa-timeline"></i> Visual Commit DAG
+                </button>
+                <button id="tabSchemaBtn" onclick="switchSidebarTab('schema')" class="flex-1 pb-2.5 text-xs font-medium text-slate-400 hover:text-slate-200 border-b-2 border-transparent flex items-center justify-center gap-1.5">
+                    <i class="fa-solid fa-table"></i> Tables & Schema
+                </button>
+            </div>
+
+            <!-- DAG Tab: Visual Interactive Git Graph -->
+            <div id="sidebarDag" class="flex-1 overflow-y-auto p-4 flex flex-col space-y-3">
+                <div class="flex items-center justify-between text-xs text-slate-400 pb-1 border-b border-slate-800/80">
+                    <span class="font-medium text-slate-300 flex items-center gap-1.5">
+                        <i class="fa-solid fa-code-fork text-indigo-400"></i> Directed Acyclic Graph
+                    </span>
+                    <span class="text-[10px] text-cyan-400 font-medium">Click node to Time-Travel</span>
+                </div>
+
+                <!-- Visual DAG Container with dynamic SVG connector lines and nodes -->
+                <div id="visualDagContainer" class="relative flex-1">
+                    <svg id="dagSvg" class="absolute inset-0 pointer-events-none w-full h-full z-0"></svg>
+                    <div id="dagNodesList" class="relative z-10 space-y-3 py-1">
+                        <div class="text-xs text-slate-500 text-center py-8">Loading visual DAG...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Schema Tab Content -->
+            <div id="sidebarSchema" class="hidden flex-1 overflow-y-auto p-4 space-y-4">
+                <div class="flex items-center justify-between text-xs text-slate-400 mb-1">
+                    <span class="font-medium text-slate-300">Database Tables</span>
+                    <button onclick="openModal('createTableModal')" class="bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 border border-indigo-500/40 px-2 py-1 rounded text-[11px] flex items-center gap-1 transition">
+                        <i class="fa-solid fa-plus text-[10px]"></i> New Table
+                    </button>
+                </div>
+                <div id="tableListContainer" class="space-y-3">
+                    <!-- Populated dynamically -->
+                </div>
+            </div>
+
+            <!-- Content-Addressable Storage Info Footer -->
+            <div class="border-t border-cardborder p-3 bg-slate-900/80 text-[11px] text-slate-400 flex items-center justify-between">
+                <span class="flex items-center gap-1.5">
+                    <i class="fa-solid fa-fingerprint text-cyan-400"></i> Immutable Content Storage
+                </span>
+                <button onclick="switchResultTab('storage')" class="text-indigo-400 hover:text-indigo-300 font-medium">
+                    Inspect SHA-1 &rarr;
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content Area: Workbench & Tabbed Displays -->
+        <main class="flex-1 flex flex-col overflow-y-auto bg-darkbg p-5 space-y-4">
+
+            <!-- Time-Travel Notice Banner (shown only when viewing historical snapshot) -->
+            <div id="timeTravelBanner" class="hidden bg-gradient-to-r from-amber-950/90 via-amber-900/60 to-yellow-950/40 border border-amber-500/60 rounded-xl p-4 shadow-xl items-center justify-between animate-fade-in">
+                <div class="flex items-center space-x-3.5">
+                    <div class="h-10 w-10 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center text-xl shrink-0 border border-amber-500/30">
+                        <i class="fa-solid fa-clock-rotate-left"></i>
+                    </div>
+                    <div>
+                        <div class="text-xs uppercase font-extrabold tracking-wider text-amber-300 flex items-center gap-2">
+                            <span>Time-Travel Mode Active</span>
+                            <span class="bg-amber-500/20 text-amber-200 text-[10px] font-mono px-2 py-0.5 rounded border border-amber-500/40">Read-Only Historical Snapshot</span>
+                        </div>
+                        <div class="text-xs text-amber-100/90 mt-0.5">
+                            Reconstructing database state at commit <code id="timeTravelCommitHash" class="bg-black/40 px-1.5 py-0.5 rounded text-amber-200 font-mono font-bold"></code>
+                        </div>
+                    </div>
+                </div>
+                <button onclick="exitTimeTravel()" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs px-4 py-2 rounded-lg transition shadow-lg flex items-center gap-1.5">
+                    <i class="fa-solid fa-arrow-left"></i> Exit Time-Travel (Return to HEAD)
+                </button>
+            </div>
+
+            <!-- Merge Conflict Alert Banner -->
+            <div id="conflictBanner" class="hidden bg-gradient-to-r from-rose-950/95 via-red-900/70 to-rose-950/80 border border-rose-500/70 rounded-xl p-4 shadow-2xl space-y-3">
+                <div class="flex items-start justify-between">
+                    <div class="flex items-start space-x-3">
+                        <div class="h-9 w-9 rounded-lg bg-rose-500/20 text-rose-400 flex items-center justify-center text-lg shrink-0 mt-0.5 border border-rose-500/40">
+                            <i class="fa-solid fa-triangle-exclamation"></i>
+                        </div>
+                        <div>
+                            <div class="text-xs uppercase font-bold tracking-wider text-rose-300">3-Way Merge Conflict Detected</div>
+                            <p id="conflictSummary" class="text-xs text-rose-100/90 mt-0.5">Both branches diverged from the common ancestor and updated identical primary key rows with conflicting values.</p>
+                        </div>
+                    </div>
+                    <button onclick="dismissConflict()" class="text-rose-400 hover:text-rose-200 text-xs">
+                        <i class="fa-solid fa-xmark text-sm"></i>
+                    </button>
+                </div>
+                <div id="conflictDetailsContainer" class="space-y-2 overflow-x-auto">
+                    <!-- Conflicts rendered dynamically -->
+                </div>
+            </div>
+
+            <!-- Main Workspace Tabs & Viewers -->
+            <section class="bg-cardbg border border-cardborder rounded-xl shadow-xl flex-1 flex flex-col min-h-[500px]">
+                
+                <!-- Main Header Navigation Tabs -->
+                <div class="border-b border-cardborder px-4 pt-2.5 flex flex-wrap items-center justify-between gap-2 bg-slate-900/40">
+                    <div class="flex space-x-1">
+                        <button id="tabTableBtn" onclick="switchResultTab('table')" class="px-3.5 py-2.5 text-xs font-semibold text-indigo-400 border-b-2 border-indigo-500 transition flex items-center gap-1.5">
+                            <i class="fa-solid fa-table-cells"></i> Data Table <span id="resultCountBadge" class="bg-indigo-500/20 text-indigo-300 px-1.5 py-0.2 text-[10px] rounded-full">0</span>
+                        </button>
+                        <button id="tabDiffBtn" onclick="switchResultTab('diff')" class="px-3.5 py-2.5 text-xs font-medium text-slate-400 hover:text-slate-200 border-b-2 border-transparent transition flex items-center gap-1.5">
+                            <i class="fa-solid fa-code-compare"></i> Visual Diff <span id="diffCountBadge" class="hidden bg-cyan-500/20 text-cyan-300 px-1.5 py-0.2 text-[10px] rounded-full">0</span>
+                        </button>
+                        <button id="tabStorageBtn" onclick="switchResultTab('storage')" class="px-3.5 py-2.5 text-xs font-medium text-slate-400 hover:text-slate-200 border-b-2 border-transparent transition flex items-center gap-1.5">
+                            <i class="fa-solid fa-layer-group text-emerald-400"></i> Storage & SHA-1 Inspector
+                        </button>
+                        <button id="tabConsoleBtn" onclick="switchResultTab('console')" class="px-3.5 py-2.5 text-xs font-medium text-slate-400 hover:text-slate-200 border-b-2 border-transparent transition flex items-center gap-1.5">
+                            <i class="fa-solid fa-terminal text-purple-400"></i> SQL Console
+                        </button>
+                    </div>
+                    <div id="statusMessage" class="text-xs text-slate-400 truncate max-w-sm"></div>
+                </div>
+
+                <!-- ================= TAB 1: DATA TABLE VIEWER WITH NO-CODE CONTROLS ================= -->
+                <div id="viewTable" class="flex-1 flex flex-col p-4 space-y-3">
+                    <!-- Table Action Bar (Add Row, Create Table, Switch Table) -->
+                    <div class="flex flex-wrap items-center justify-between gap-2.5 bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
+                        <div class="flex items-center space-x-2">
+                            <span class="text-xs text-slate-400 font-medium">Table:</span>
+                            <div id="tablePillList" class="flex items-center space-x-1.5">
+                                <!-- Dynamic table pills -->
+                            </div>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <button onclick="openModal('createTableModal')" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-3 py-1.5 rounded-lg border border-slate-700 transition flex items-center gap-1.5 shadow-sm">
+                                <i class="fa-solid fa-table text-indigo-400 text-xs"></i> + Create Table
+                            </button>
+                            <button id="addRowBtn" onclick="openAddRowModal()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium px-3.5 py-1.5 rounded-lg transition flex items-center gap-1.5 shadow-md shadow-emerald-600/20">
+                                <i class="fa-solid fa-plus text-xs"></i> + Add / Edit Row
+                            </button>
+                            <button onclick="openMergeModal()" class="bg-purple-600 hover:bg-purple-500 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 shadow-md shadow-purple-600/20">
+                                <i class="fa-solid fa-code-merge text-xs"></i> 3-Way Merge
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Grid Table -->
+                    <div class="overflow-x-auto rounded-lg border border-slate-800 flex-1">
+                        <table class="w-full text-left border-collapse text-xs">
+                            <thead id="tableHeader" class="bg-slate-900/90 text-slate-300 font-semibold border-b border-slate-800 uppercase tracking-wider text-[11px]">
+                                <tr><th class="p-3">Column</th></tr>
+                            </thead>
+                            <tbody id="tableBody" class="divide-y divide-slate-800/80 font-mono text-slate-200">
+                                <tr><td class="p-8 text-center text-slate-500 font-sans">No tables or rows found. Use the "+ Create Table" button above to get started.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- ================= TAB 2: VISUAL SIDE-BY-SIDE DIFF VIEWER ================= -->
+                <div id="viewDiff" class="hidden flex-1 overflow-auto p-4 space-y-4">
+                    <!-- Diff Controls Bar -->
+                    <div class="bg-slate-900/80 p-3 rounded-lg border border-slate-800 flex flex-wrap items-center justify-between gap-3">
+                        <div class="flex items-center flex-wrap gap-2 text-xs">
+                            <span class="text-slate-400 font-medium">Compare:</span>
+                            <select id="diffRef1" class="bg-slate-800 text-slate-200 text-xs rounded-lg px-2.5 py-1.5 border border-slate-700 focus:outline-none"></select>
+                            <span class="text-slate-500">&harr;</span>
+                            <select id="diffRef2" class="bg-slate-800 text-slate-200 text-xs rounded-lg px-2.5 py-1.5 border border-slate-700 focus:outline-none"></select>
+                            <span class="text-slate-400 font-medium ml-2">Table:</span>
+                            <select id="diffTableSelect" class="bg-slate-800 text-slate-200 text-xs rounded-lg px-2.5 py-1.5 border border-slate-700 focus:outline-none"></select>
+                            <button onclick="runVisualDiff()" class="bg-cyan-600 hover:bg-cyan-500 text-white font-medium text-xs px-4 py-1.5 rounded-lg transition ml-2 shadow-md flex items-center gap-1.5">
+                                <i class="fa-solid fa-magnifying-glass text-[10px]"></i> Compare Snapshots
+                            </button>
+                        </div>
+                        <div class="text-[11px] text-slate-400">
+                            Evaluates SHA-1 RowBlobs for ADDED (+), DELETED (-), and CHANGED (~) rows
+                        </div>
+                    </div>
+
+                    <!-- Diff Cards Container -->
+                    <div id="diffEmptyState" class="p-10 text-center text-xs text-slate-500 border border-dashed border-slate-800 rounded-lg">
+                        Select two branches or commits and click "Compare Snapshots" to inspect differences.
+                    </div>
+                    <div id="diffEntriesContainer" class="space-y-3"></div>
+                </div>
+
+                <!-- ================= TAB 3: LIVE STORAGE & SHA-1 INSPECTOR ================= -->
+                <div id="viewStorage" class="hidden flex-1 overflow-auto p-4 space-y-4">
+                    <!-- Real-Time Metrics Cards -->
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div class="bg-slate-900/80 border border-slate-800 p-3.5 rounded-xl">
+                            <div class="text-[10px] text-slate-400 uppercase font-semibold">Total CAS Objects</div>
+                            <div id="metricTotalObjects" class="text-2xl font-bold font-mono text-cyan-400 mt-1">0</div>
+                            <div class="text-[10px] text-slate-500 mt-1">Immutable SHA-1 addressed</div>
+                        </div>
+                        <div class="bg-slate-900/80 border border-emerald-500/30 p-3.5 rounded-xl bg-emerald-950/10">
+                            <div class="text-[10px] text-emerald-400 uppercase font-semibold">Deduplication Savings</div>
+                            <div id="metricDedupSavings" class="text-2xl font-bold font-mono text-emerald-300 mt-1">0%</div>
+                            <div class="text-[10px] text-emerald-500 mt-1">RowBlobs shared across commits</div>
+                        </div>
+                        <div class="bg-slate-900/80 border border-slate-800 p-3.5 rounded-xl">
+                            <div class="text-[10px] text-slate-400 uppercase font-semibold">Disk Footprint</div>
+                            <div id="metricTotalBytes" class="text-2xl font-bold font-mono text-indigo-300 mt-1">0 B</div>
+                            <div class="text-[10px] text-slate-500 mt-1">Under .timegraph/objects/</div>
+                        </div>
+                        <div class="bg-slate-900/80 border border-slate-800 p-3.5 rounded-xl">
+                            <div class="text-[10px] text-slate-400 uppercase font-semibold">Logical Rows vs Blobs</div>
+                            <div id="metricRowRatio" class="text-xl font-bold font-mono text-amber-300 mt-1">0 / 0</div>
+                            <div class="text-[10px] text-slate-500 mt-1">Logical rows vs physical blobs</div>
+                        </div>
+                    </div>
+
+                    <!-- Object Type Filter Pills -->
+                    <div class="flex items-center justify-between flex-wrap gap-2 border-b border-slate-800 pb-2">
+                        <div class="flex items-center space-x-1.5 text-xs">
+                            <span class="text-slate-400 mr-1">Filter:</span>
+                            <button onclick="filterStorageObjects('ALL')" class="storage-pill bg-indigo-600 text-white px-2.5 py-1 rounded text-[11px] font-medium transition">All</button>
+                            <button onclick="filterStorageObjects('RowBlob')" class="storage-pill bg-slate-800 text-slate-300 hover:text-white px-2.5 py-1 rounded text-[11px] font-medium transition">RowBlob</button>
+                            <button onclick="filterStorageObjects('TableTree')" class="storage-pill bg-slate-800 text-slate-300 hover:text-white px-2.5 py-1 rounded text-[11px] font-medium transition">TableTree</button>
+                            <button onclick="filterStorageObjects('CommitNode')" class="storage-pill bg-slate-800 text-slate-300 hover:text-white px-2.5 py-1 rounded text-[11px] font-medium transition">CommitNode</button>
+                            <button onclick="filterStorageObjects('DatabaseSnapshot')" class="storage-pill bg-slate-800 text-slate-300 hover:text-white px-2.5 py-1 rounded text-[11px] font-medium transition">Snapshot</button>
+                        </div>
+                        <button onclick="fetchStorageStats()" class="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1">
+                            <i class="fa-solid fa-arrows-rotate text-[10px]"></i> Refresh Objects
+                        </button>
+                    </div>
+
+                    <!-- Content-Addressable Objects Table -->
+                    <div class="overflow-x-auto rounded-lg border border-slate-800">
+                        <table class="w-full text-left border-collapse text-xs">
+                            <thead class="bg-slate-900/90 text-slate-400 font-semibold border-b border-slate-800 text-[11px]">
+                                <tr>
+                                    <th class="p-3">SHA-1 Object Hash (2-char Prefix / Remainder)</th>
+                                    <th class="p-3">Type</th>
+                                    <th class="p-3">Size</th>
+                                    <th class="p-3">Payload Summary</th>
+                                </tr>
+                            </thead>
+                            <tbody id="storageObjectsBody" class="divide-y divide-slate-800/80 font-mono text-slate-300">
+                                <tr><td colspan="4" class="p-6 text-center text-slate-500 font-sans">Loading storage objects...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- ================= TAB 4: SQL & VCS CONSOLE ================= -->
+                <div id="viewConsole" class="hidden flex-1 overflow-auto p-4 space-y-4">
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                        <div class="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                            <i class="fa-solid fa-terminal text-purple-400"></i> Interactive Command Shell
+                        </div>
+                        <span class="text-[11px] text-slate-400">Ctrl + Enter to run</span>
+                    </div>
+
+                    <!-- Console Input -->
+                    <div class="space-y-2">
+                        <textarea id="commandInput" rows="3"
+                                  class="w-full bg-slate-900/90 text-indigo-100 font-mono text-xs rounded-lg p-3.5 border border-slate-700/80 focus:border-indigo-500 focus:outline-none"
+                                  placeholder="Type SQL (SELECT * FROM employees, UPSERT, DELETE) or VCS command (COMMIT, DIFF, MERGE)..."></textarea>
+                        <div class="flex justify-between items-center">
+                            <div class="flex items-center space-x-1.5">
+                                <span class="text-[11px] text-slate-500">Quick:</span>
+                                <button onclick="setQuery('SELECT * FROM employees')" class="text-[11px] bg-slate-800 hover:bg-slate-700 text-indigo-300 px-2 py-0.5 rounded font-mono">SELECT *</button>
+                                <button onclick="setQuery('DIFF main salary-hike employees')" class="text-[11px] bg-slate-800 hover:bg-slate-700 text-cyan-300 px-2 py-0.5 rounded font-mono">DIFF</button>
+                                <button onclick="setQuery('MERGE salary-hike')" class="text-[11px] bg-slate-800 hover:bg-slate-700 text-emerald-300 px-2 py-0.5 rounded font-mono">MERGE</button>
+                                <button onclick="setQuery('LOG')" class="text-[11px] bg-slate-800 hover:bg-slate-700 text-purple-300 px-2 py-0.5 rounded font-mono">LOG</button>
+                            </div>
+                            <button id="runBtn" onclick="executeCurrentCommand()" class="bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs px-4 py-1.5 rounded-lg transition shadow-md flex items-center gap-1.5">
+                                <i class="fa-solid fa-play text-[10px]"></i> Execute
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Output Console -->
+                    <div>
+                        <div class="text-[11px] uppercase font-semibold text-slate-400 mb-1">Execution Response</div>
+                        <pre id="rawOutput" class="bg-slate-950 p-4 rounded-lg font-mono text-xs text-emerald-400/90 overflow-x-auto whitespace-pre-wrap leading-relaxed border border-slate-800 min-h-[140px]">Ready.</pre>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- ================= MODALS ================= -->
+
+    <!-- Modal 1: Create Table (No-Code GUI) -->
+    <div id="createTableModal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-cardbg border border-cardborder rounded-xl max-w-lg w-full p-5 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between border-b border-cardborder pb-3">
+                <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-table text-indigo-400"></i> Create New Table
+                </h3>
+                <button onclick="closeModal('createTableModal')" class="text-slate-400 hover:text-white text-xs">
+                    <i class="fa-solid fa-xmark text-sm"></i>
+                </button>
+            </div>
+            <div>
+                <label class="block text-xs text-slate-300 mb-1.5 font-medium">Table Name</label>
+                <input id="newTableName" type="text" placeholder="e.g. products, customers, tasks"
+                       class="w-full bg-slate-900 text-white font-mono text-xs rounded-lg px-3 py-2 border border-slate-700 focus:outline-none focus:border-indigo-500">
+            </div>
+            <div>
+                <div class="flex items-center justify-between mb-2">
+                    <label class="text-xs text-slate-300 font-medium">Columns & Types</label>
+                    <button type="button" onclick="addColumnRow()" class="text-xs text-indigo-400 hover:text-indigo-300 font-medium">
+                        + Add Column
+                    </button>
+                </div>
+                <div id="columnDefsContainer" class="space-y-2 max-h-56 overflow-y-auto pr-1">
+                    <!-- Default columns -->
+                    <div class="flex items-center gap-2 column-def-row">
+                        <input type="text" placeholder="id" value="id" class="col-name flex-1 bg-slate-900 text-white font-mono text-xs rounded-lg px-2.5 py-1.5 border border-slate-700">
+                        <select class="col-type bg-slate-900 text-white text-xs rounded-lg px-2.5 py-1.5 border border-slate-700">
+                            <option value="INT" selected>INT</option>
+                            <option value="VARCHAR">VARCHAR</option>
+                            <option value="DOUBLE">DOUBLE</option>
+                            <option value="BOOLEAN">BOOLEAN</option>
+                        </select>
+                        <label class="flex items-center text-[11px] text-amber-300 gap-1 cursor-pointer">
+                            <input type="radio" name="primaryKeyRadio" checked class="col-pk"> PK
+                        </label>
+                    </div>
+                    <div class="flex items-center gap-2 column-def-row">
+                        <input type="text" placeholder="name" value="name" class="col-name flex-1 bg-slate-900 text-white font-mono text-xs rounded-lg px-2.5 py-1.5 border border-slate-700">
+                        <select class="col-type bg-slate-900 text-white text-xs rounded-lg px-2.5 py-1.5 border border-slate-700">
+                            <option value="INT">INT</option>
+                            <option value="VARCHAR" selected>VARCHAR</option>
+                            <option value="DOUBLE">DOUBLE</option>
+                            <option value="BOOLEAN">BOOLEAN</option>
+                        </select>
+                        <label class="flex items-center text-[11px] text-amber-300 gap-1 cursor-pointer">
+                            <input type="radio" name="primaryKeyRadio" class="col-pk"> PK
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <div class="flex justify-end gap-2 pt-2 border-t border-cardborder">
+                <button onclick="closeModal('createTableModal')" class="px-3 py-1.5 text-xs text-slate-300 hover:text-white">Cancel</button>
+                <button onclick="submitCreateTableGui()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium px-4 py-1.5 rounded-lg transition shadow-md">Create Table</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal 2: Add / Edit Row (No-Code GUI) -->
+    <div id="rowModal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-cardbg border border-cardborder rounded-xl max-w-md w-full p-5 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between border-b border-cardborder pb-3">
+                <h3 id="rowModalTitle" class="text-sm font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-pen text-emerald-400"></i> Add / Edit Row
+                </h3>
+                <button onclick="closeModal('rowModal')" class="text-slate-400 hover:text-white text-xs">
+                    <i class="fa-solid fa-xmark text-sm"></i>
+                </button>
+            </div>
+            <form id="rowForm" onsubmit="submitRowGui(event)" class="space-y-3">
+                <div id="rowInputsContainer" class="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+                    <!-- Column input fields generated dynamically -->
+                </div>
+                <div class="flex justify-end gap-2 pt-3 border-t border-cardborder">
+                    <button type="button" onclick="closeModal('rowModal')" class="px-3 py-1.5 text-xs text-slate-300 hover:text-white">Cancel</button>
+                    <button type="submit" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-4 py-1.5 rounded-lg transition shadow-md">Save Row</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal 3: Create Branch -->
+    <div id="branchModal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-cardbg border border-cardborder rounded-xl max-w-sm w-full p-5 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between border-b border-cardborder pb-3">
+                <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-code-branch text-emerald-400"></i> Create New Branch
+                </h3>
+                <button onclick="closeModal('branchModal')" class="text-slate-400 hover:text-white text-xs">
+                    <i class="fa-solid fa-xmark text-sm"></i>
+                </button>
+            </div>
+            <div>
+                <label class="block text-xs text-slate-300 mb-1.5 font-medium">Branch Name</label>
+                <input id="newBranchNameInput" type="text" placeholder="e.g. feature-bonus, patch-1"
+                       class="w-full bg-slate-900 text-white font-mono text-xs rounded-lg px-3 py-2 border border-slate-700 focus:outline-none focus:border-indigo-500">
+                <p class="text-[11px] text-slate-500 mt-1">Branch points to current HEAD snapshot.</p>
+            </div>
+            <div class="flex justify-end gap-2 pt-2">
+                <button onclick="closeModal('branchModal')" class="px-3 py-1.5 text-xs text-slate-300 hover:text-white">Cancel</button>
+                <button onclick="submitCreateBranch()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium px-4 py-1.5 rounded-lg transition">Create Branch</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal 4: Commit Snapshot -->
+    <div id="commitModal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-cardbg border border-cardborder rounded-xl max-w-md w-full p-5 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between border-b border-cardborder pb-3">
+                <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-check text-indigo-400"></i> Commit Database Snapshot
+                </h3>
+                <button onclick="closeModal('commitModal')" class="text-slate-400 hover:text-white text-xs">
+                    <i class="fa-solid fa-xmark text-sm"></i>
+                </button>
+            </div>
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-xs text-slate-300 mb-1.5 font-medium">Commit Message</label>
+                    <textarea id="commitMsgInput" rows="2" placeholder="e.g. Add 2026 performance reviews"
+                              class="w-full bg-slate-900 text-white font-mono text-xs rounded-lg px-3 py-2 border border-slate-700 focus:outline-none focus:border-indigo-500"></textarea>
+                </div>
+                <div>
+                    <label class="block text-xs text-slate-300 mb-1.5 font-medium">Author</label>
+                    <input id="commitAuthorInput" type="text" value="Database Admin"
+                           class="w-full bg-slate-900 text-white text-xs rounded-lg px-3 py-2 border border-slate-700 focus:outline-none focus:border-indigo-500">
+                </div>
+            </div>
+            <div class="flex justify-end gap-2 pt-2">
+                <button onclick="closeModal('commitModal')" class="px-3 py-1.5 text-xs text-slate-300 hover:text-white">Cancel</button>
+                <button onclick="submitCommit()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium px-4 py-1.5 rounded-lg transition">Commit</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal 5: 3-Way Merge -->
+    <div id="mergeModal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-cardbg border border-cardborder rounded-xl max-w-sm w-full p-5 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between border-b border-cardborder pb-3">
+                <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-code-merge text-purple-400"></i> 3-Way Branch Merge
+                </h3>
+                <button onclick="closeModal('mergeModal')" class="text-slate-400 hover:text-white text-xs">
+                    <i class="fa-solid fa-xmark text-sm"></i>
+                </button>
+            </div>
+            <div>
+                <p class="text-xs text-slate-300 mb-2">
+                    Merge changes from target branch into current active branch (<span id="mergeTargetActiveBranch" class="font-bold text-indigo-400"></span>):
+                </p>
+                <label class="block text-xs text-slate-400 mb-1">Target Branch to Merge:</label>
+                <select id="mergeBranchSelector" class="w-full bg-slate-900 text-white text-xs rounded-lg px-3 py-2 border border-slate-700 focus:outline-none"></select>
+            </div>
+            <div class="flex justify-end gap-2 pt-2">
+                <button onclick="closeModal('mergeModal')" class="px-3 py-1.5 text-xs text-slate-300 hover:text-white">Cancel</button>
+                <button onclick="submitMergeGui()" class="bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold px-4 py-1.5 rounded-lg transition">Run 3-Way Merge</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal 6: Author Login & Collaboration Modal -->
+    <div id="authModal" class="hidden fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+        <div class="bg-cardbg border border-cardborder rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 relative animate-fade-in">
+            <div class="flex items-center justify-between border-b border-cardborder pb-3">
+                <div class="flex items-center space-x-2.5">
+                    <div class="h-9 w-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 text-white flex items-center justify-center shadow-md">
+                        <i class="fa-solid fa-user-shield text-sm"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-bold text-white">Author Login & Collaboration</h3>
+                        <p class="text-[11px] text-slate-400">Audit trail: commits will be recorded under your account</p>
+                    </div>
+                </div>
+                <button onclick="closeModal('authModal')" class="text-slate-400 hover:text-white text-xs">
+                    <i class="fa-solid fa-xmark text-sm"></i>
+                </button>
+            </div>
+
+            <!-- Quick 1-Click Demo Accounts -->
+            <div>
+                <div class="text-[11px] uppercase font-bold text-slate-400 tracking-wider mb-2 flex items-center justify-between">
+                    <span>1-Click Demo Accounts</span>
+                    <span class="text-[10px] text-cyan-400 font-normal">Click to switch instantly</span>
+                </div>
+                <div class="grid grid-cols-2 gap-2.5">
+                    <button type="button" onclick="quickLogin('admin', 'admin123')" class="bg-indigo-950/40 hover:bg-indigo-900/60 border border-indigo-500/50 hover:border-indigo-400 p-2.5 rounded-xl text-left transition group">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-bold text-indigo-300 group-hover:text-white">Sarah Connor</span>
+                            <span class="text-[9px] bg-indigo-500/20 text-indigo-300 px-1.5 py-0.2 rounded font-semibold border border-indigo-500/30">Admin</span>
+                        </div>
+                        <div class="text-[10px] text-slate-400 font-mono mt-0.5">admin / admin123</div>
+                    </button>
+                    <button type="button" onclick="quickLogin('analyst', 'analyst123')" class="bg-purple-950/40 hover:bg-purple-900/60 border border-purple-500/50 hover:border-purple-400 p-2.5 rounded-xl text-left transition group">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-bold text-purple-300 group-hover:text-white">Alex Vance</span>
+                            <span class="text-[9px] bg-purple-500/20 text-purple-300 px-1.5 py-0.2 rounded font-semibold border border-purple-500/30">Analyst</span>
+                        </div>
+                        <div class="text-[10px] text-slate-400 font-mono mt-0.5">analyst / analyst123</div>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Auth Form Tabs -->
+            <div class="border-t border-cardborder pt-3">
+                <div class="flex border-b border-cardborder/80 mb-3 text-xs">
+                    <button id="authLoginTabBtn" onclick="switchAuthTab('login')" class="flex-1 pb-2 font-bold text-indigo-400 border-b-2 border-indigo-500">Sign In</button>
+                    <button id="authRegisterTabBtn" onclick="switchAuthTab('register')" class="flex-1 pb-2 font-medium text-slate-400 hover:text-slate-200 border-b-2 border-transparent">Register User</button>
+                </div>
+
+                <!-- Sign In Form -->
+                <form id="authLoginForm" onsubmit="submitLogin(event)" class="space-y-3">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-300 mb-1">Username</label>
+                        <input id="loginUsername" type="text" placeholder="e.g. admin or analyst" required class="w-full bg-slate-900 text-white font-mono text-xs rounded-lg px-3 py-2 border border-slate-700 focus:outline-none focus:border-indigo-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-300 mb-1">Password</label>
+                        <input id="loginPassword" type="password" placeholder="••••••••" required class="w-full bg-slate-900 text-white font-mono text-xs rounded-lg px-3 py-2 border border-slate-700 focus:outline-none focus:border-indigo-500">
+                    </div>
+                    <div id="loginErrorMsg" class="hidden text-xs text-rose-400 font-medium"></div>
+                    <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold py-2 rounded-lg transition shadow-md">Sign In</button>
+                </form>
+
+                <!-- Register Form -->
+                <form id="authRegisterForm" onsubmit="submitRegister(event)" class="hidden space-y-3">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-300 mb-1">Username</label>
+                        <input id="regUsername" type="text" placeholder="e.g. dev_jane" required class="w-full bg-slate-900 text-white font-mono text-xs rounded-lg px-3 py-2 border border-slate-700 focus:outline-none focus:border-indigo-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-300 mb-1">Full Name</label>
+                        <input id="regFullName" type="text" placeholder="e.g. Jane Doe" required class="w-full bg-slate-900 text-white text-xs rounded-lg px-3 py-2 border border-slate-700 focus:outline-none focus:border-indigo-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-300 mb-1">Password</label>
+                        <input id="regPassword" type="password" placeholder="••••••••" required class="w-full bg-slate-900 text-white font-mono text-xs rounded-lg px-3 py-2 border border-slate-700 focus:outline-none focus:border-indigo-500">
+                    </div>
+                    <div id="regErrorMsg" class="hidden text-xs text-rose-400 font-medium"></div>
+                    <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2 rounded-lg transition shadow-md">Create Account & Sign In</button>
+                </form>
+            </div>
+
+            <div class="text-center pt-1 border-t border-cardborder">
+                <button type="button" onclick="closeModal('authModal')" class="text-[11px] text-slate-500 hover:text-slate-300">
+                    Continue as Guest (Anonymous)
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Application Script -->
+    <script>
+        let currentState = null;
+        let isTimeTravelMode = false;
+        let timeTravelHash = null;
+        let selectedTableName = null;
+        let storageObjectsCache = [];
+        let currentUser = null;
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            await checkAuthStatus();
+            fetchState();
+            fetchStorageStats();
+
+            // Show sleek Auth Modal on first load if not authenticated yet
+            if (!currentUser) {
+                openModal('authModal');
+            }
+
+            document.getElementById('commandInput').addEventListener('keydown', (e) => {
+                if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                    e.preventDefault();
+                    executeCurrentCommand();
+                }
+            });
+        });
+
+        /* ================= AUTHENTICATION & COLLABORATION SESSIONS ================= */
+        async function checkAuthStatus() {
+            try {
+                const res = await fetch('/api/auth/me');
+                const data = await res.json();
+                if (data.authenticated) {
+                    currentUser = data;
+                    updateUserUi(data);
+                } else {
+                    currentUser = null;
+                    updateUserUi(null);
+                }
+            } catch (e) {
+                console.error("Auth status check failed:", e);
+            }
+        }
+
+        function updateUserUi(user) {
+            const userBadge = document.getElementById('userBadge');
+            const authBtnLabel = document.getElementById('authBtnLabel');
+            const userDisplayName = document.getElementById('userDisplayName');
+            const userRoleBadge = document.getElementById('userRoleBadge');
+            const userAvatar = document.getElementById('userAvatar');
+            const commitAuthorInput = document.getElementById('commitAuthorInput');
+
+            if (user) {
+                userBadge.classList.remove('hidden');
+                userBadge.classList.add('flex');
+                userDisplayName.textContent = user.fullName || user.username;
+                userRoleBadge.textContent = user.role || 'Contributor';
+                userAvatar.textContent = (user.fullName || user.username).charAt(0).toUpperCase();
+                authBtnLabel.textContent = "Switch User";
+                if (commitAuthorInput) {
+                    commitAuthorInput.value = `${user.fullName} (${user.username})`;
+                }
+            } else {
+                userBadge.classList.add('hidden');
+                userBadge.classList.remove('flex');
+                authBtnLabel.textContent = "Sign In";
+                if (commitAuthorInput) {
+                    commitAuthorInput.value = "Anonymous Developer";
+                }
+            }
+        }
+
+        function switchAuthTab(tab) {
+            const loginForm = document.getElementById('authLoginForm');
+            const regForm = document.getElementById('authRegisterForm');
+            const loginBtn = document.getElementById('authLoginTabBtn');
+            const regBtn = document.getElementById('authRegisterTabBtn');
+
+            if (tab === 'login') {
+                loginForm.classList.remove('hidden');
+                regForm.classList.add('hidden');
+                loginBtn.className = "flex-1 pb-2 font-bold text-indigo-400 border-b-2 border-indigo-500";
+                regBtn.className = "flex-1 pb-2 font-medium text-slate-400 hover:text-slate-200 border-b-2 border-transparent";
+            } else {
+                loginForm.classList.add('hidden');
+                regForm.classList.remove('hidden');
+                regBtn.className = "flex-1 pb-2 font-bold text-emerald-400 border-b-2 border-emerald-500";
+                loginBtn.className = "flex-1 pb-2 font-medium text-slate-400 hover:text-slate-200 border-b-2 border-transparent";
+            }
+        }
+
+        async function quickLogin(username, password) {
+            try {
+                const res = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    currentUser = data;
+                    updateUserUi(data);
+                    closeModal('authModal');
+                } else {
+                    alert(data.message || "Login failed");
+                }
+            } catch (err) {
+                alert("Login error: " + err.message);
+            }
+        }
+
+        async function submitLogin(e) {
+            e.preventDefault();
+            const u = document.getElementById('loginUsername').value.trim();
+            const p = document.getElementById('loginPassword').value.trim();
+            const errDiv = document.getElementById('loginErrorMsg');
+
+            try {
+                const res = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: u, password: p })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    currentUser = data;
+                    updateUserUi(data);
+                    errDiv.classList.add('hidden');
+                    closeModal('authModal');
+                } else {
+                    errDiv.textContent = data.message || "Invalid credentials";
+                    errDiv.classList.remove('hidden');
+                }
+            } catch (err) {
+                errDiv.textContent = err.message;
+                errDiv.classList.remove('hidden');
+            }
+        }
+
+        async function submitRegister(e) {
+            e.preventDefault();
+            const u = document.getElementById('regUsername').value.trim();
+            const fn = document.getElementById('regFullName').value.trim();
+            const p = document.getElementById('regPassword').value.trim();
+            const errDiv = document.getElementById('regErrorMsg');
+
+            try {
+                const res = await fetch('/api/auth/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: u, password: p, fullName: fn })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    currentUser = data;
+                    updateUserUi(data);
+                    errDiv.classList.add('hidden');
+                    closeModal('authModal');
+                } else {
+                    errDiv.textContent = data.message || "Registration failed";
+                    errDiv.classList.remove('hidden');
+                }
+            } catch (err) {
+                errDiv.textContent = err.message;
+                errDiv.classList.remove('hidden');
+            }
+        }
+
+        async function handleAuthButtonClick() {
+            if (currentUser) {
+                // Switch User / Logout flow
+                await fetch('/api/auth/logout', { method: 'POST' });
+                currentUser = null;
+                updateUserUi(null);
+                openModal('authModal');
+            } else {
+                openModal('authModal');
+            }
+        }
+
+        async function fetchState() {
+            try {
+                const res = await fetch('/api/state');
+                currentState = await res.json();
+                renderState(currentState);
+            } catch (err) {
+                console.error("Failed to fetch state:", err);
+            }
+        }
+
+        async function fetchStorageStats() {
+            try {
+                const res = await fetch('/api/storage/inspect');
+                const data = await res.json();
+                renderStorageStats(data);
+            } catch (err) {
+                console.error("Failed to fetch storage stats:", err);
+            }
+        }
+
+        function renderState(state) {
+            // Update Top Bar branch selector
+            const branchSelector = document.getElementById('branchSelector');
+            branchSelector.innerHTML = '';
+            (state.branches || []).forEach(b => {
+                const opt = document.createElement('option');
+                opt.value = b;
+                opt.textContent = b;
+                if (b === state.currentBranch) opt.selected = true;
+                branchSelector.appendChild(opt);
+            });
+            if (state.currentBranch === 'DETACHED') {
+                const opt = document.createElement('option');
+                opt.value = 'DETACHED';
+                opt.textContent = 'DETACHED HEAD';
+                opt.selected = true;
+                branchSelector.appendChild(opt);
+            }
+
+            // HEAD Hash
+            const headDisplay = document.getElementById('headHashDisplay');
+            if (state.headCommitHash) {
+                headDisplay.textContent = state.headCommitHash.substring(0, 8);
+                headDisplay.title = state.headCommitHash;
+            } else {
+                headDisplay.textContent = 'None';
+            }
+
+            // Staged badge
+            const stagedBadge = document.getElementById('stagedBadge');
+            if (state.isDirty) {
+                stagedBadge.classList.remove('hidden');
+                stagedBadge.classList.add('flex');
+            } else {
+                stagedBadge.classList.add('hidden');
+                stagedBadge.classList.remove('flex');
+            }
+
+            // Render Visual SVG DAG Graph
+            renderVisualDag(state.commits || [], state.headCommitHash);
+
+            // Render Tables in Schema tab and pills in Table View
+            renderTables(state.tables || {});
+
+            // Update Diff Selectors
+            updateDiffSelectors(state);
+        }
+
+        /* ================= 1. VISUAL INTERACTIVE COMMIT DAG GRAPH ================= */
+        function renderVisualDag(commits, headHash) {
+            const container = document.getElementById('dagNodesList');
+            const svg = document.getElementById('dagSvg');
+            container.innerHTML = '';
+            svg.innerHTML = '';
+
+            if (commits.length === 0) {
+                container.innerHTML = '<div class="text-xs text-slate-500 text-center py-8">Repository is clean (no commits). Click "+ Create Table" to begin.</div>';
+                return;
+            }
+
+            // Map branches & lane tracks (Track 0: main, Track 1: feature branches)
+            const laneColors = ['#38bdf8', '#c084fc', '#34d399', '#f59e0b', '#f43f5e'];
+            const commitElements = [];
+
+            commits.forEach((c, idx) => {
+                const isHead = headHash === c.hash;
+                const isSelectedTimeTravel = isTimeTravelMode && timeTravelHash === c.hash;
+                const isMerge = c.isMerge;
+
+                // Determine lane: merge / branch logic
+                const laneIdx = (isMerge || c.parentHashes.length > 1) ? 0 : (idx % 2 === 1 ? 1 : 0);
+                const color = laneColors[laneIdx % laneColors.length];
+
+                const card = document.createElement('div');
+                card.id = `commit-node-${c.hash}`;
+                card.className = `flex items-start space-x-3 p-3 rounded-xl border cursor-pointer transition relative group ${
+                    isSelectedTimeTravel 
+                        ? 'bg-amber-950/50 border-amber-500/80 ring-2 ring-amber-500/50 shadow-lg' 
+                        : isHead 
+                            ? 'bg-indigo-950/40 border-indigo-500/70 shadow-md shadow-indigo-950' 
+                            : 'bg-slate-900/80 border-slate-800 hover:border-slate-700 hover:bg-slate-800/80'
+                }`;
+
+                const shortHash = c.hash.substring(0, 7);
+                const dateStr = new Date(c.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+                card.innerHTML = `
+                    <div class="flex flex-col items-center pt-0.5 shrink-0">
+                        <div class="relative flex items-center justify-center">
+                            <span class="w-3.5 h-3.5 rounded-full border-2" style="background-color: ${color}; border-color: ${isSelectedTimeTravel ? '#f59e0b' : '#fff'};"></span>
+                            ${isHead || isSelectedTimeTravel ? `<span class="node-pulse absolute w-6 h-6 rounded-full" style="background-color: ${isSelectedTimeTravel ? '#f59e0b' : color};"></span>` : ''}
+                        </div>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center justify-between gap-1 mb-1">
+                            <div class="flex items-center gap-1.5 flex-wrap">
+                                <span class="font-mono text-[11px] font-bold ${isSelectedTimeTravel ? 'text-amber-400' : 'text-slate-300'}">${shortHash}</span>
+                                ${isHead ? '<span class="bg-indigo-500/20 text-indigo-300 text-[9px] uppercase px-1.5 py-0.2 rounded border border-indigo-500/40 font-bold">HEAD</span>' : ''}
+                                ${isMerge ? '<span class="bg-purple-500/20 text-purple-300 text-[9px] uppercase px-1.5 py-0.2 rounded border border-purple-500/40 font-bold"><i class="fa-solid fa-code-merge text-[8px] mr-1"></i>MERGE</span>' : ''}
+                                ${isSelectedTimeTravel ? '<span class="bg-amber-500/20 text-amber-300 text-[9px] uppercase px-1.5 py-0.2 rounded border border-amber-500/50 font-bold">ACTIVE TIME-TRAVEL</span>' : ''}
+                            </div>
+                            <span class="text-[10px] text-slate-500 shrink-0">${dateStr}</span>
+                        </div>
+                        <div class="text-xs font-medium text-slate-200 line-clamp-2 leading-snug">${escapeHtml(c.message)}</div>
+                        <div class="flex items-center justify-between mt-2 pt-1.5 border-t border-slate-800/80 text-[10px] text-slate-400">
+                            <span><i class="fa-regular fa-user text-[9px] mr-1 text-slate-500"></i>${escapeHtml(c.author)}</span>
+                            <span class="text-indigo-400 group-hover:text-cyan-400 flex items-center gap-1 transition">
+                                <i class="fa-solid fa-clock-rotate-left text-[9px]"></i> Time-Travel &rarr;
+                            </span>
+                        </div>
+                    </div>
+                `;
+
+                card.onclick = () => runTimeTravel(c.hash);
+                container.appendChild(card);
+                commitElements.push({ hash: c.hash, el: card, lane: laneIdx, parents: c.parentHashes });
+            });
+
+            // Draw curved SVG connector lines between commit nodes
+            setTimeout(() => {
+                const svgRect = svg.getBoundingClientRect();
+                svg.setAttribute('viewBox', `0 0 ${svgRect.width} ${svgRect.height}`);
+
+                for (let i = 0; i < commitElements.length; i++) {
+                    const current = commitElements[i];
+                    const r1 = current.el.getBoundingClientRect();
+                    const x1 = 18;
+                    const y1 = (r1.top - svgRect.top) + 18;
+
+                    (current.parents || []).forEach(pHash => {
+                        const parent = commitElements.find(p => p.hash === pHash);
+                        if (parent) {
+                            const r2 = parent.el.getBoundingClientRect();
+                            const x2 = 18;
+                            const y2 = (r2.top - svgRect.top) + 18;
+
+                            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                            const controlDist = Math.abs(y2 - y1) * 0.4;
+                            const d = `M ${x1} ${y1} C ${x1} ${y1 + controlDist}, ${x2} ${y2 - controlDist}, ${x2} ${y2}`;
+
+                            path.setAttribute('d', d);
+                            path.setAttribute('fill', 'none');
+                            path.setAttribute('stroke', '#475569');
+                            path.setAttribute('stroke-width', '2');
+                            path.setAttribute('stroke-dasharray', current.parents.length > 1 ? '3,3' : 'none');
+                            svg.appendChild(path);
+                        }
+                    });
+                }
+            }, 50);
+        }
+
+        /* ================= 2. NO-CODE GUI CONTROLS & TABLE VIEWER ================= */
+        function renderTables(tables) {
+            const tableNames = Object.keys(tables);
+            const container = document.getElementById('tableListContainer');
+            const pillsContainer = document.getElementById('tablePillList');
+            container.innerHTML = '';
+            pillsContainer.innerHTML = '';
+
+            if (tableNames.length === 0) {
+                container.innerHTML = '<div class="text-xs text-slate-500 text-center py-4">No tables found. Click "+ New Table" above.</div>';
+                renderTableData(null);
+                return;
+            }
+
+            if (!selectedTableName || !tables[selectedTableName]) {
+                selectedTableName = tableNames[0];
+            }
+
+            tableNames.forEach(tName => {
+                const t = tables[tName];
+
+                // Table Selector Pill in Data View
+                const pill = document.createElement('button');
+                const isSelected = tName === selectedTableName;
+                pill.className = `px-3 py-1 rounded-md text-xs font-medium transition flex items-center gap-1.5 ${
+                    isSelected ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-800 text-slate-400 hover:text-white'
+                }`;
+                pill.innerHTML = `<i class="fa-solid fa-table text-[10px]"></i> ${escapeHtml(tName)} <span class="text-[10px] opacity-75">(${t.rowCount})</span>`;
+                pill.onclick = () => {
+                    selectedTableName = tName;
+                    renderTables(currentState.tables || {});
+                };
+                pillsContainer.appendChild(pill);
+
+                // Table schema item in sidebar
+                const card = document.createElement('div');
+                card.className = "p-3 rounded-lg bg-slate-900/60 border border-slate-800 space-y-2";
+                let colTags = (t.columns || []).map(c => `
+                    <span class="inline-flex items-center text-[10px] px-1.5 py-0.5 rounded ${c.primaryKey ? 'bg-amber-500/10 text-amber-300 border border-amber-500/20 font-bold' : 'bg-slate-800 text-slate-400'}">
+                        ${c.primaryKey ? '<i class="fa-solid fa-key text-[8px] mr-1 text-amber-400"></i>' : ''}
+                        ${escapeHtml(c.name)} <span class="text-slate-500 ml-1">(${c.type})</span>
+                    </span>
+                `).join(' ');
+
+                card.innerHTML = `
+                    <div class="flex items-center justify-between">
+                        <span class="font-bold text-xs text-white flex items-center gap-1.5">
+                            <i class="fa-solid fa-table text-indigo-400 text-xs"></i> ${escapeHtml(tName)}
+                        </span>
+                        <span class="text-[10px] text-slate-400">${t.rowCount} rows</span>
+                    </div>
+                    <div class="flex flex-wrap gap-1">${colTags}</div>
+                    <div class="pt-1 flex justify-end">
+                        <button onclick="selectedTableName='${tName}'; switchResultTab('table'); renderTables(currentState.tables);" class="text-[10px] text-indigo-400 hover:text-indigo-300 transition">
+                            View Data &rarr;
+                        </button>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+
+            // Render current selected table data
+            if (selectedTableName && tables[selectedTableName]) {
+                renderTableData(tables[selectedTableName]);
+            }
+        }
+
+        function renderTableData(tableData) {
+            const header = document.getElementById('tableHeader');
+            const body = document.getElementById('tableBody');
+            const badge = document.getElementById('resultCountBadge');
+
+            if (!tableData || !tableData.rows) {
+                header.innerHTML = '<tr><th class="p-3">Result</th></tr>';
+                body.innerHTML = '<tr><td class="p-6 text-center text-slate-500">No data available.</td></tr>';
+                badge.textContent = '0';
+                return;
+            }
+
+            const rows = tableData.rows;
+            badge.textContent = rows.length;
+
+            if (rows.length === 0) {
+                header.innerHTML = '<tr><th class="p-3">Columns</th></tr>';
+                body.innerHTML = '<tr><td class="p-8 text-center text-slate-500 font-sans">Table is currently empty (0 rows). Click "+ Add / Edit Row" above to insert data.</td></tr>';
+                return;
+            }
+
+            // Columns
+            let cols = (tableData.columns && tableData.columns.length > 0)
+                ? tableData.columns.map(c => typeof c === 'string' ? c : c.name)
+                : Object.keys(rows[0]);
+
+            const pkCol = tableData.primaryKeyColumn || cols[0];
+
+            header.innerHTML = '<tr>' + cols.map(c => {
+                const isPk = c.toLowerCase() === pkCol.toLowerCase();
+                return `<th class="px-4 py-3 border-r border-slate-800 last:border-r-0 ${isPk ? 'text-amber-300' : ''}">
+                    ${isPk ? '<i class="fa-solid fa-key text-[9px] mr-1 text-amber-400"></i>' : ''}${escapeHtml(c)}
+                </th>`;
+            }).join('') + '<th class="px-4 py-3 text-right">Actions</th></tr>';
+
+            body.innerHTML = rows.map((row, idx) => {
+                const rowBg = idx % 2 === 0 ? 'bg-slate-900/30' : 'bg-slate-900/70';
+                const pkVal = row[pkCol];
+
+                const cells = cols.map(c => {
+                    const val = row[c];
+                    let displayVal = val === null || val === undefined ? '<span class="text-slate-600 italic">null</span>' : escapeHtml(String(val));
+                    if (typeof val === 'boolean') {
+                        displayVal = val ? '<span class="text-emerald-400 font-semibold">true</span>' : '<span class="text-rose-400 font-semibold">false</span>';
+                    } else if (typeof val === 'number') {
+                        displayVal = `<span class="text-cyan-300">${displayVal}</span>`;
+                    }
+                    return `<td class="px-4 py-2.5 border-r border-slate-800 last:border-r-0">${displayVal}</td>`;
+                }).join('');
+
+                const rowJsonEscaped = escapeHtml(JSON.stringify(row));
+
+                return `
+                    <tr class="${rowBg} hover:bg-indigo-950/20 transition group">
+                        ${cells}
+                        <td class="px-4 py-2.5 text-right space-x-1 shrink-0">
+                            <button onclick="openEditRowModal('${rowJsonEscaped}')" class="text-slate-400 hover:text-cyan-300 p-1 rounded" title="Edit Row">
+                                <i class="fa-solid fa-pen-to-square"></i>
+                            </button>
+                            <button onclick="deleteRowGui('${escapeHtml(String(pkVal))}')" class="text-slate-400 hover:text-rose-400 p-1 rounded" title="Delete Row">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // GUI: Add Column in Create Table Modal
+        function addColumnRow() {
+            const container = document.getElementById('columnDefsContainer');
+            const row = document.createElement('div');
+            row.className = "flex items-center gap-2 column-def-row";
+            row.innerHTML = `
+                <input type="text" placeholder="col_name" class="col-name flex-1 bg-slate-900 text-white font-mono text-xs rounded-lg px-2.5 py-1.5 border border-slate-700">
+                <select class="col-type bg-slate-900 text-white text-xs rounded-lg px-2.5 py-1.5 border border-slate-700">
+                    <option value="VARCHAR" selected>VARCHAR</option>
+                    <option value="INT">INT</option>
+                    <option value="DOUBLE">DOUBLE</option>
+                    <option value="BOOLEAN">BOOLEAN</option>
+                </select>
+                <label class="flex items-center text-[11px] text-amber-300 gap-1 cursor-pointer">
+                    <input type="radio" name="primaryKeyRadio" class="col-pk"> PK
+                </label>
+                <button type="button" onclick="this.parentElement.remove()" class="text-slate-500 hover:text-rose-400 px-1 text-xs">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            `;
+            container.appendChild(row);
+        }
+
+        // GUI: Submit Create Table
+        async function submitCreateTableGui() {
+            const tableName = document.getElementById('newTableName').value.trim();
+            if (!tableName) {
+                alert("Please specify a table name.");
+                return;
+            }
+
+            const rows = document.querySelectorAll('.column-def-row');
+            const cols = [];
+
+            rows.forEach(r => {
+                const name = r.querySelector('.col-name').value.trim();
+                const type = r.querySelector('.col-type').value;
+                const isPk = r.querySelector('.col-pk').checked;
+                if (name) {
+                    cols.push(`${name} ${type}${isPk ? ' PRIMARY KEY' : ''}`);
+                }
+            });
+
+            if (cols.length === 0) {
+                alert("Please define at least one column.");
+                return;
+            }
+
+            const sql = `CREATE TABLE ${tableName} (${cols.join(', ')})`;
+            closeModal('createTableModal');
+            document.getElementById('newTableName').value = '';
+            await runCommand(sql);
+            selectedTableName = tableName;
+            await fetchState();
+            await fetchStorageStats();
+        }
+
+        // GUI: Add / Edit Row Modal
+        function openAddRowModal() {
+            if (!selectedTableName || !currentState || !currentState.tables[selectedTableName]) {
+                alert("Please select or create a table first.");
+                return;
+            }
+            const table = currentState.tables[selectedTableName];
+            document.getElementById('rowModalTitle').innerHTML = `<i class="fa-solid fa-plus text-emerald-400"></i> Add Row to ${escapeHtml(selectedTableName)}`;
+            buildRowFormInputs(table.columns, null);
+            openModal('rowModal');
+        }
+
+        function openEditRowModal(rowJsonStr) {
+            const row = JSON.parse(rowJsonStr);
+            const table = currentState.tables[selectedTableName];
+            document.getElementById('rowModalTitle').innerHTML = `<i class="fa-solid fa-pen text-cyan-400"></i> Edit Row in ${escapeHtml(selectedTableName)}`;
+            buildRowFormInputs(table.columns, row);
+            openModal('rowModal');
+        }
+
+        function buildRowFormInputs(columns, existingValues) {
+            const container = document.getElementById('rowInputsContainer');
+            container.innerHTML = '';
+
+            columns.forEach(col => {
+                const colName = col.name;
+                const colType = col.type;
+                const isPk = col.primaryKey;
+                const val = existingValues ? (existingValues[colName] !== undefined ? existingValues[colName] : '') : '';
+
+                const field = document.createElement('div');
+                field.className = "space-y-1";
+
+                let inputHtml = '';
+                if (colType === 'BOOLEAN') {
+                    const checked = val === true || val === 'true';
+                    inputHtml = `
+                        <select data-col="${colName}" data-type="${colType}" class="w-full bg-slate-900 text-white text-xs rounded-lg px-3 py-2 border border-slate-700">
+                            <option value="true" ${checked ? 'selected' : ''}>true</option>
+                            <option value="false" ${!checked ? 'selected' : ''}>false</option>
+                        </select>
+                    `;
+                } else {
+                    inputHtml = `
+                        <input type="text" data-col="${colName}" data-type="${colType}" value="${escapeHtml(String(val))}"
+                               class="w-full bg-slate-900 text-white font-mono text-xs rounded-lg px-3 py-2 border border-slate-700 focus:outline-none focus:border-indigo-500">
+                    `;
+                }
+
+                field.innerHTML = `
+                    <label class="block text-xs font-medium text-slate-300">
+                        ${escapeHtml(colName)} <span class="text-slate-500 text-[10px]">(${colType})</span>
+                        ${isPk ? '<span class="text-amber-400 text-[10px] ml-1 font-bold">[PRIMARY KEY]</span>' : ''}
+                    </label>
+                    ${inputHtml}
+                `;
+                container.appendChild(field);
+            });
+        }
+
+        async function submitRowGui(e) {
+            e.preventDefault();
+            const inputs = document.querySelectorAll('#rowInputsContainer [data-col]');
+            const colNames = [];
+            const values = [];
+
+            inputs.forEach(inp => {
+                const col = inp.getAttribute('data-col');
+                const type = inp.getAttribute('data-type');
+                let val = inp.value.trim();
+
+                colNames.push(col);
+                if (type === 'VARCHAR') {
+                    values.push(`'${val.replace(/'/g, "\\'")}'`);
+                } else if (type === 'BOOLEAN') {
+                    values.push(val);
+                } else if (val === '') {
+                    values.push('null');
+                } else {
+                    values.push(val);
+                }
+            });
+
+            const sql = `UPSERT INTO ${selectedTableName} (${colNames.join(', ')}) VALUES (${values.join(', ')})`;
+            closeModal('rowModal');
+            await runCommand(sql);
+            await fetchState();
+            await fetchStorageStats();
+        }
+
+        async function deleteRowGui(pkVal) {
+            if (!confirm(`Delete row with primary key = ${pkVal}?`)) return;
+            const sql = `DELETE FROM ${selectedTableName} WHERE id = ${pkVal}`;
+            await runCommand(sql);
+            await fetchState();
+            await fetchStorageStats();
+        }
+
+        /* ================= 3. LIVE STORAGE & SHA-1 INSPECTOR ================= */
+        function renderStorageStats(data) {
+            storageObjectsCache = data.objects || [];
+
+            document.getElementById('metricTotalObjects').textContent = data.totalObjects || 0;
+            document.getElementById('metricDedupSavings').textContent = (data.deduplicationSavingsPercent || 0) + '%';
+            document.getElementById('metricTotalBytes').textContent = formatBytes(data.totalBytes || 0);
+            document.getElementById('metricRowRatio').textContent = `${data.logicalRowsAcrossCommits || 0} rows / ${data.rowBlobCount || 0} blobs`;
+
+            renderStorageObjectsTable(storageObjectsCache);
+        }
+
+        function filterStorageObjects(type) {
+            document.querySelectorAll('.storage-pill').forEach(p => {
+                p.className = "storage-pill bg-slate-800 text-slate-300 hover:text-white px-2.5 py-1 rounded text-[11px] font-medium transition";
+            });
+            event.target.className = "storage-pill bg-indigo-600 text-white px-2.5 py-1 rounded text-[11px] font-medium transition";
+
+            if (type === 'ALL') {
+                renderStorageObjectsTable(storageObjectsCache);
+            } else {
+                const filtered = storageObjectsCache.filter(o => o.type === type);
+                renderStorageObjectsTable(filtered);
+            }
+        }
+
+        function renderStorageObjectsTable(objects) {
+            const body = document.getElementById('storageObjectsBody');
+            body.innerHTML = '';
+
+            if (objects.length === 0) {
+                body.innerHTML = '<tr><td colspan="4" class="p-6 text-center text-slate-500 font-sans">No storage objects found.</td></tr>';
+                return;
+            }
+
+            objects.forEach(obj => {
+                const typeColors = {
+                    'CommitNode': 'bg-purple-500/20 text-purple-300 border-purple-500/40',
+                    'DatabaseSnapshot': 'bg-blue-500/20 text-blue-300 border-blue-500/40',
+                    'TableTree': 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+                    'RowBlob': 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                };
+                const badgeClass = typeColors[obj.type] || 'bg-slate-700 text-slate-300 border-slate-600';
+
+                const prefix = obj.hash.substring(0, 2);
+                const remainder = obj.hash.substring(2);
+
+                const row = document.createElement('tr');
+                row.className = "hover:bg-slate-900/60 transition";
+                row.innerHTML = `
+                    <td class="p-3 font-mono text-xs">
+                        <span class="text-cyan-400 font-bold">${prefix}</span>/<span class="text-slate-300">${remainder}</span>
+                        <button onclick="navigator.clipboard.writeText('${obj.hash}')" class="text-slate-500 hover:text-white ml-2" title="Copy full SHA-1 hash">
+                            <i class="fa-regular fa-copy text-[10px]"></i>
+                        </button>
+                    </td>
+                    <td class="p-3">
+                        <span class="text-[10px] px-2 py-0.5 rounded border font-semibold ${badgeClass}">${obj.type}</span>
+                    </td>
+                    <td class="p-3 text-slate-400 text-xs">${obj.sizeBytes} B</td>
+                    <td class="p-3 text-slate-300 text-xs font-mono truncate max-w-xs" title="${escapeHtml(obj.preview)}">
+                        ${escapeHtml(obj.preview)}
+                    </td>
+                `;
+                body.appendChild(row);
+            });
+        }
+
+        /* ================= 4. VISUAL DIFF & MERGE CONFLICT RESOLVER ================= */
+        function updateDiffSelectors(state) {
+            const s1 = document.getElementById('diffRef1');
+            const s2 = document.getElementById('diffRef2');
+            const st = document.getElementById('diffTableSelect');
+
+            const refs = [...(state.branches || [])];
+            (state.commits || []).forEach(c => refs.push(c.hash.substring(0, 7)));
+
+            [s1, s2].forEach((sel, i) => {
+                sel.innerHTML = '';
+                refs.forEach(r => {
+                    const opt = document.createElement('option');
+                    opt.value = r;
+                    opt.textContent = r;
+                    sel.appendChild(opt);
+                });
+            });
+
+            if (refs.length > 1) {
+                s1.selectedIndex = 0;
+                s2.selectedIndex = 1;
+            }
+
+            st.innerHTML = '';
+            Object.keys(state.tables || {}).forEach(t => {
+                const opt = document.createElement('option');
+                opt.value = t;
+                opt.textContent = t;
+                st.appendChild(opt);
+            });
+        }
+
+        async function runVisualDiff() {
+            const ref1 = document.getElementById('diffRef1').value;
+            const ref2 = document.getElementById('diffRef2').value;
+            const table = document.getElementById('diffTableSelect').value;
+
+            if (!ref1 || !ref2 || !table) {
+                alert("Please select two commits/branches and a table to diff.");
+                return;
+            }
+
+            const res = await runCommand(`DIFF ${ref1} ${ref2} ${table}`);
+            if (res && res.diffEntries) {
+                renderDiffEntries(res.diffEntries);
+            }
+        }
+
+        function renderDiffEntries(diffs) {
+            const container = document.getElementById('diffEntriesContainer');
+            const emptyState = document.getElementById('diffEmptyState');
+            const badge = document.getElementById('diffCountBadge');
+
+            badge.textContent = diffs.length;
+            badge.classList.remove('hidden');
+            container.innerHTML = '';
+
+            if (diffs.length === 0) {
+                emptyState.textContent = "No differences found between the two snapshots (identical data).";
+                emptyState.classList.remove('hidden');
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+
+            diffs.forEach(d => {
+                const el = document.createElement('div');
+                el.className = "rounded-xl border p-4 text-xs font-mono space-y-2.5 transition shadow-sm ";
+
+                if (d.type === 'ADDED') {
+                    el.className += "bg-emerald-950/30 border-emerald-500/50 text-emerald-200";
+                    el.innerHTML = `
+                        <div class="flex items-center justify-between font-bold">
+                            <span class="flex items-center gap-2 text-emerald-400">
+                                <span class="bg-emerald-500/20 px-2 py-0.5 rounded text-[10px] uppercase font-bold">+ ADDED</span>
+                                PK: ${escapeHtml(d.primaryKey)}
+                            </span>
+                            <span class="text-[10px] text-emerald-400/80 font-sans">${escapeHtml(d.tableName)}</span>
+                        </div>
+                        <div class="bg-black/40 p-3 rounded-lg border border-emerald-500/20 text-emerald-300">
+                            ${formatRowValues(d.newValues)}
+                        </div>
+                    `;
+                } else if (d.type === 'DELETED') {
+                    el.className += "bg-rose-950/30 border-rose-500/50 text-rose-200";
+                    el.innerHTML = `
+                        <div class="flex items-center justify-between font-bold">
+                            <span class="flex items-center gap-2 text-rose-400">
+                                <span class="bg-rose-500/20 px-2 py-0.5 rounded text-[10px] uppercase font-bold">- DELETED</span>
+                                PK: ${escapeHtml(d.primaryKey)}
+                            </span>
+                            <span class="text-[10px] text-rose-400/80 font-sans">${escapeHtml(d.tableName)}</span>
+                        </div>
+                        <div class="bg-black/40 p-3 rounded-lg border border-rose-500/20 text-rose-300">
+                            ${formatRowValues(d.oldValues)}
+                        </div>
+                    `;
+                } else {
+                    el.className += "bg-amber-950/30 border-amber-500/50 text-amber-200";
+                    el.innerHTML = `
+                        <div class="flex items-center justify-between font-bold">
+                            <span class="flex items-center gap-2 text-amber-400">
+                                <span class="bg-amber-500/20 px-2 py-0.5 rounded text-[10px] uppercase font-bold">~ CHANGED</span>
+                                PK: ${escapeHtml(d.primaryKey)}
+                            </span>
+                            <span class="text-[10px] text-amber-400/80 font-sans">${escapeHtml(d.tableName)}</span>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div class="bg-black/40 p-3 rounded-lg border border-rose-500/30 text-rose-300">
+                                <div class="text-[10px] text-rose-400 font-bold uppercase mb-1">Old Value (-)</div>
+                                ${formatRowValues(d.oldValues)}
+                            </div>
+                            <div class="bg-black/40 p-3 rounded-lg border border-emerald-500/30 text-emerald-300">
+                                <div class="text-[10px] text-emerald-400 font-bold uppercase mb-1">New Value (+)</div>
+                                ${formatRowValues(d.newValues)}
+                            </div>
+                        </div>
+                    `;
+                }
+
+                container.appendChild(el);
+            });
+        }
+
+        function formatRowValues(vals) {
+            if (!vals) return '<span class="italic text-slate-500">empty</span>';
+            return Object.entries(vals).map(([k, v]) => `
+                <div class="flex justify-between py-0.5 border-b border-white/5 last:border-b-0">
+                    <span class="text-slate-400">${escapeHtml(k)}:</span>
+                    <span class="font-semibold text-white">${escapeHtml(String(v))}</span>
+                </div>
+            `).join('');
+        }
+
+        function showMergeConflict(conflicts, msg) {
+            const banner = document.getElementById('conflictBanner');
+            const details = document.getElementById('conflictDetailsContainer');
+            banner.classList.remove('hidden');
+            details.innerHTML = '';
+
+            conflicts.forEach(c => {
+                const card = document.createElement('div');
+                card.className = "bg-black/50 border border-rose-500/40 rounded-xl p-3.5 text-xs font-mono space-y-3";
+                card.innerHTML = `
+                    <div class="font-bold text-rose-300 flex items-center justify-between">
+                        <span><i class="fa-solid fa-code-merge text-rose-400 mr-1.5"></i> Conflict on [${escapeHtml(c.tableName)}] PK = ${escapeHtml(c.primaryKey)}</span>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-2 text-[11px]">
+                        <div class="bg-slate-900/90 p-2.5 rounded-lg border border-slate-700">
+                            <div class="text-[10px] font-bold text-slate-400 uppercase mb-1">Base (LCA Common Ancestor)</div>
+                            ${formatRowValues(c.baseRow)}
+                        </div>
+                        <div class="bg-indigo-950/50 p-2.5 rounded-lg border border-indigo-500/50">
+                            <div class="text-[10px] font-bold text-indigo-300 uppercase mb-1">Ours (Current HEAD)</div>
+                            ${formatRowValues(c.oursRow)}
+                        </div>
+                        <div class="bg-amber-950/50 p-2.5 rounded-lg border border-amber-500/50">
+                            <div class="text-[10px] font-bold text-amber-300 uppercase mb-1">Theirs (Incoming Target)</div>
+                            ${formatRowValues(c.theirsRow)}
+                        </div>
+                    </div>
+                `;
+                details.appendChild(card);
+            });
+        }
+
+        function dismissConflict() {
+            document.getElementById('conflictBanner').classList.add('hidden');
+        }
+
+        // 3-Way Merge Modal
+        function openMergeModal() {
+            if (!currentState) return;
+            const current = currentState.currentBranch;
+            document.getElementById('mergeTargetActiveBranch').textContent = current;
+
+            const selector = document.getElementById('mergeBranchSelector');
+            selector.innerHTML = '';
+            (currentState.branches || []).filter(b => b !== current).forEach(b => {
+                const opt = document.createElement('option');
+                opt.value = b;
+                opt.textContent = b;
+                selector.appendChild(opt);
+            });
+            openModal('mergeModal');
+        }
+
+        async function submitMergeGui() {
+            const target = document.getElementById('mergeBranchSelector').value;
+            if (!target) return;
+            closeModal('mergeModal');
+            await runCommand(`MERGE ${target}`);
+            await fetchState();
+            await fetchStorageStats();
+        }
+
+        /* ================= VCS TIME-TRAVEL & BRANCH SWITCHING ================= */
+        function runTimeTravel(commitHash) {
+            isTimeTravelMode = true;
+            timeTravelHash = commitHash;
+
+            document.getElementById('timeTravelBanner').classList.remove('hidden');
+            document.getElementById('timeTravelBanner').classList.add('flex');
+            document.getElementById('timeTravelCommitHash').textContent = commitHash.substring(0, 10);
+
+            const table = selectedTableName || (currentState && currentState.tables ? Object.keys(currentState.tables)[0] : 'employees');
+            const cmd = `SELECT * FROM ${table} AS_OF ${commitHash}`;
+            document.getElementById('commandInput').value = cmd;
+            runCommand(cmd);
+            renderVisualDag(currentState ? currentState.commits || [] : [], currentState ? currentState.headCommitHash : null);
+        }
+
+        function exitTimeTravel() {
+            isTimeTravelMode = false;
+            timeTravelHash = null;
+            document.getElementById('timeTravelBanner').classList.add('hidden');
+            document.getElementById('timeTravelBanner').classList.remove('flex');
+            fetchState();
+            if (selectedTableName) {
+                runCommand(`SELECT * FROM ${selectedTableName}`);
+            }
+        }
+
+        async function switchBranch(branchName) {
+            if (!branchName) return;
+            await runCommand(`CHECKOUT ${branchName}`);
+            await fetchState();
+            await fetchStorageStats();
+        }
+
+        function copyHeadHash() {
+            if (currentState && currentState.headCommitHash) {
+                navigator.clipboard.writeText(currentState.headCommitHash);
+                alert("Copied full HEAD commit hash to clipboard: " + currentState.headCommitHash);
+            }
+        }
+
+        /* ================= GENERAL WORKSPACE ACTIONS ================= */
+        function setQuery(sql) {
+            document.getElementById('commandInput').value = sql;
+            switchResultTab('console');
+        }
+
+        async function executeCurrentCommand() {
+            const input = document.getElementById('commandInput');
+            const command = input.value.trim();
+            if (!command) return;
+
+            const runBtn = document.getElementById('runBtn');
+            const originalText = runBtn.innerHTML;
+            runBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-xs"></i> Running...';
+            runBtn.disabled = true;
+
+            try {
+                await runCommand(command);
+                await fetchState();
+                await fetchStorageStats();
+            } finally {
+                runBtn.innerHTML = originalText;
+                runBtn.disabled = false;
+            }
+        }
+
+        async function runCommand(cmd) {
+            const statusMsg = document.getElementById('statusMessage');
+            statusMsg.textContent = "Executing...";
+
+            try {
+                const response = await fetch('/api/execute', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: cmd })
+                });
+
+                const result = await response.json();
+                handleCommandResult(result);
+                return result;
+            } catch (err) {
+                statusMsg.textContent = "Network error: " + err.message;
+                document.getElementById('rawOutput').textContent = "Network Error: " + err.message;
+            }
+        }
+
+        function handleCommandResult(result) {
+            const statusMsg = document.getElementById('statusMessage');
+            const rawOutput = document.getElementById('rawOutput');
+            rawOutput.textContent = JSON.stringify(result, null, 2);
+            statusMsg.textContent = result.message || `Status: ${result.status}`;
+
+            if (result.status === 'ERROR') {
+                statusMsg.className = "text-xs text-rose-400 font-medium truncate max-w-sm";
+                switchResultTab('console');
+                return;
+            }
+
+            if (result.status === 'CONFLICT') {
+                statusMsg.className = "text-xs text-rose-400 font-bold truncate max-w-sm";
+                showMergeConflict(result.conflicts || [], result.message);
+                return;
+            }
+
+            statusMsg.className = "text-xs text-emerald-400 font-medium truncate max-w-sm";
+            dismissConflict();
+
+            if (result.rows && result.columns) {
+                renderTableData({
+                    name: result.tableName,
+                    columns: result.columns.map(c => ({ name: c, type: '' })),
+                    rows: result.rows
+                });
+                switchResultTab('table');
+            } else if (result.diffEntries && result.diffEntries.length >= 0) {
+                renderDiffEntries(result.diffEntries);
+                switchResultTab('diff');
+            }
+        }
+
+        async function resetDemoData() {
+            if (!confirm("Reset repository back to the original sample dataset (employees on main and salary-hike)?")) return;
+            await fetch('/api/reset', { method: 'POST' });
+            exitTimeTravel();
+            await fetchState();
+            await fetchStorageStats();
+        }
+
+        async function clearFreshDatabase() {
+            if (!confirm("Clear the repository completely? All existing tables and commits will be erased so you can build from scratch.")) return;
+            await fetch('/api/clear', { method: 'POST' });
+            exitTimeTravel();
+            await fetchState();
+            await fetchStorageStats();
+        }
+
+        // Tab Switchers
+        function switchSidebarTab(tab) {
+            const dagView = document.getElementById('sidebarDag');
+            const schemaView = document.getElementById('sidebarSchema');
+            const tabDagBtn = document.getElementById('tabDagBtn');
+            const tabSchemaBtn = document.getElementById('tabSchemaBtn');
+
+            if (tab === 'dag') {
+                dagView.classList.remove('hidden');
+                schemaView.classList.add('hidden');
+                tabDagBtn.className = "flex-1 pb-2.5 text-xs font-semibold text-indigo-400 border-b-2 border-indigo-500 flex items-center justify-center gap-1.5";
+                tabSchemaBtn.className = "flex-1 pb-2.5 text-xs font-medium text-slate-400 hover:text-slate-200 border-b-2 border-transparent flex items-center justify-center gap-1.5";
+            } else {
+                dagView.classList.add('hidden');
+                schemaView.classList.remove('hidden');
+                tabSchemaBtn.className = "flex-1 pb-2.5 text-xs font-semibold text-indigo-400 border-b-2 border-indigo-500 flex items-center justify-center gap-1.5";
+                tabDagBtn.className = "flex-1 pb-2.5 text-xs font-medium text-slate-400 hover:text-slate-200 border-b-2 border-transparent flex items-center justify-center gap-1.5";
+            }
+        }
+
+        function switchResultTab(tab) {
+            const vTable = document.getElementById('viewTable');
+            const vDiff = document.getElementById('viewDiff');
+            const vStorage = document.getElementById('viewStorage');
+            const vConsole = document.getElementById('viewConsole');
+
+            const bTable = document.getElementById('tabTableBtn');
+            const bDiff = document.getElementById('tabDiffBtn');
+            const bStorage = document.getElementById('tabStorageBtn');
+            const bConsole = document.getElementById('tabConsoleBtn');
+
+            [vTable, vDiff, vStorage, vConsole].forEach(el => el.classList.add('hidden'));
+            [bTable, bDiff, bStorage, bConsole].forEach(el => el.className = "px-3.5 py-2.5 text-xs font-medium text-slate-400 hover:text-slate-200 border-b-2 border-transparent transition flex items-center gap-1.5");
+
+            if (tab === 'table') {
+                vTable.classList.remove('hidden');
+                bTable.className = "px-3.5 py-2.5 text-xs font-semibold text-indigo-400 border-b-2 border-indigo-500 transition flex items-center gap-1.5";
+            } else if (tab === 'diff') {
+                vDiff.classList.remove('hidden');
+                bDiff.className = "px-3.5 py-2.5 text-xs font-semibold text-cyan-400 border-b-2 border-cyan-500 transition flex items-center gap-1.5";
+            } else if (tab === 'storage') {
+                vStorage.classList.remove('hidden');
+                bStorage.className = "px-3.5 py-2.5 text-xs font-semibold text-emerald-400 border-b-2 border-emerald-500 transition flex items-center gap-1.5";
+                fetchStorageStats();
+            } else {
+                vConsole.classList.remove('hidden');
+                bConsole.className = "px-3.5 py-2.5 text-xs font-semibold text-purple-400 border-b-2 border-purple-500 transition flex items-center gap-1.5";
+            }
+        }
+
+        // Modals & Menus
+        function openModal(id) {
+            if (id === 'commitModal' && currentUser) {
+                const authorInput = document.getElementById('commitAuthorInput');
+                if (authorInput) {
+                    authorInput.value = `${currentUser.fullName} (${currentUser.username})`;
+                }
+            }
+            document.getElementById(id).classList.remove('hidden');
+        }
+        function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+        function toggleMenu(id) { document.getElementById(id).classList.toggle('hidden'); }
+
+        async function submitCreateBranch() {
+            const name = document.getElementById('newBranchNameInput').value.trim();
+            if (!name) return;
+            closeModal('branchModal');
+            document.getElementById('newBranchNameInput').value = '';
+            await runCommand(`BRANCH ${name}`);
+            await fetchState();
+            await fetchStorageStats();
+        }
+
+        async function submitCommit() {
+            const msg = document.getElementById('commitMsgInput').value.trim();
+            if (!msg) return;
+            closeModal('commitModal');
+            document.getElementById('commitMsgInput').value = '';
+            await runCommand(`COMMIT "${msg}"`);
+            await fetchState();
+            await fetchStorageStats();
+        }
+
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+    </script>
+</body>
+</html>
