@@ -16,10 +16,13 @@ WORKDIR /app
 
 # Add unprivileged system user for container security
 RUN addgroup -S timegraph && adduser -S timegraph -G timegraph
-USER timegraph
 
 # Copy application JAR using wildcard to prevent version mismatch breakages
 COPY --from=builder /workspace/target/*.jar app.jar
+
+# Grant ownership of /app to timegraph user so .timegraph/ can be created at runtime
+RUN chown -R timegraph:timegraph /app
+USER timegraph
 
 # Expose port (default 8080, dynamically overridable by Render's $PORT)
 ENV PORT=8080
