@@ -48,9 +48,22 @@
             0%, 100% { opacity: 0.8; transform: scale(1); }
             50% { opacity: 0.2; transform: scale(1.4); }
         }
+        @keyframes slide-in-right {
+            from { transform: translateX(110%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes fade-out-right {
+            from { opacity: 1; transform: translateX(0) scale(1); }
+            to { opacity: 0; transform: translateX(40%) scale(0.95); }
+        }
+        .toast-enter { animation: slide-in-right 0.25s ease-out forwards; }
+        .toast-exit { animation: fade-out-right 0.25s ease-in forwards; }
     </style>
 </head>
 <body class="min-h-screen flex flex-col font-sans">
+
+    <!-- Toast Notification Container -->
+    <div id="toastContainer" class="fixed top-4 right-4 z-50 flex flex-col space-y-2 pointer-events-none max-w-sm w-full"></div>
 
     <!-- Top Navigation Bar -->
     <header class="border-b border-cardborder bg-cardbg px-6 py-3 flex flex-wrap items-center justify-between gap-4 sticky top-0 z-30 shadow-lg">
@@ -70,7 +83,7 @@
         <!-- VCS Active Status Indicators & Controls -->
         <div class="flex items-center flex-wrap gap-2.5">
             <!-- Active Branch Selector -->
-            <div class="flex items-center bg-slate-900 border border-slate-700/60 rounded-lg px-2.5 py-1.5 shadow-inner">
+            <div class="flex items-center bg-slate-900 border border-slate-700/60 rounded-lg px-2.5 py-1.5 shadow-inner" title="Active Branch">
                 <i class="fa-solid fa-code-branch text-indigo-400 text-xs mr-2"></i>
                 <span class="text-xs text-slate-400 mr-2">Branch:</span>
                 <select id="branchSelector" onchange="switchBranch(this.value)" class="bg-transparent text-xs font-semibold text-white focus:outline-none cursor-pointer">
@@ -86,22 +99,22 @@
             </div>
 
             <!-- Staged changes indicator -->
-            <div id="stagedBadge" class="hidden items-center bg-amber-500/10 border border-amber-500/30 rounded-lg px-2.5 py-1.5 text-xs text-amber-300 font-medium">
-                <i class="fa-solid fa-circle-dot text-[10px] text-amber-400 mr-1.5 animate-pulse"></i>
-                Uncommitted Changes
+            <div id="stagedBadge" class="hidden items-center bg-amber-500/20 border border-amber-500/50 rounded-lg px-2.5 py-1.5 text-xs text-amber-300 font-semibold shadow-inner animate-pulse" title="Changes staged in working snapshot. Click 'Commit Snapshot' to record them into DAG.">
+                <i class="fa-solid fa-circle-dot text-[10px] text-amber-400 mr-1.5"></i>
+                <span>Uncommitted Changes</span>
             </div>
 
             <!-- Action Buttons -->
-            <button onclick="openModal('branchModal')" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium px-3 py-1.5 rounded-lg border border-slate-700 transition flex items-center shadow-sm">
+            <button onclick="openModal('branchModal')" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium px-3 py-1.5 rounded-lg border border-slate-700 transition flex items-center shadow-sm" title="Create a new branch from current HEAD">
                 <i class="fa-solid fa-code-branch text-xs mr-1.5 text-indigo-400"></i> New Branch
             </button>
-            <button onclick="openModal('commitModal')" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium px-3.5 py-1.5 rounded-lg transition flex items-center shadow-md shadow-indigo-600/20">
+            <button id="commitBtn" onclick="openModal('commitModal')" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium px-3.5 py-1.5 rounded-lg transition flex items-center shadow-md shadow-indigo-600/20" title="Commit working snapshot to history">
                 <i class="fa-solid fa-check text-xs mr-1.5"></i> Commit Snapshot
             </button>
 
             <!-- Reset & Clear Dropdown Menu -->
             <div class="relative inline-block text-left">
-                <button onclick="toggleMenu('dbActionsMenu')" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs px-2.5 py-1.5 rounded-lg border border-slate-700 transition flex items-center gap-1.5">
+                <button onclick="toggleMenu('dbActionsMenu')" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs px-2.5 py-1.5 rounded-lg border border-slate-700 transition flex items-center gap-1.5" title="Database Management Options">
                     <i class="fa-solid fa-gear text-slate-400"></i>
                     <span>Manage DB</span>
                     <i class="fa-solid fa-chevron-down text-[10px]"></i>
@@ -118,14 +131,14 @@
 
             <!-- Author / Session Collaboration Badge & Switcher -->
             <div class="flex items-center space-x-2 pl-2 border-l border-slate-700/60">
-                <div id="userBadge" class="hidden items-center bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs">
-                    <div id="userAvatar" class="h-5 w-5 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 text-white flex items-center justify-center font-bold text-[10px] mr-1.5 shadow-sm">U</div>
+                <div id="userBadge" class="hidden items-center bg-indigo-950/40 border border-indigo-500/40 rounded-lg px-2.5 py-1 text-xs shadow-inner">
+                    <div id="userAvatar" class="h-6 w-6 rounded-full bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 text-white flex items-center justify-center font-bold text-[10px] mr-1.5 shadow-sm">U</div>
                     <div class="flex flex-col text-left mr-1">
-                        <span id="userDisplayName" class="font-bold text-slate-200 text-[11px] leading-tight">User</span>
-                        <span id="userRoleBadge" class="text-[9px] text-indigo-400 font-semibold leading-none">Role</span>
+                        <span id="userDisplayName" class="font-bold text-slate-100 text-[11px] leading-tight">User</span>
+                        <span id="userRoleBadge" class="text-[9px] text-indigo-300 font-semibold leading-none">Role</span>
                     </div>
                 </div>
-                <button onclick="handleAuthButtonClick()" id="authActionBtn" class="bg-indigo-950/60 hover:bg-indigo-900/80 text-indigo-300 hover:text-white text-xs px-2.5 py-1.5 rounded-lg border border-indigo-500/40 transition flex items-center gap-1.5 shadow-sm">
+                <button onclick="handleAuthButtonClick()" id="authActionBtn" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-indigo-400/40 transition flex items-center gap-1.5 shadow-md shadow-indigo-600/30" title="Sign in or switch author session">
                     <i class="fa-solid fa-user-circle text-xs"></i>
                     <span id="authBtnLabel">Sign In</span>
                 </button>
@@ -150,11 +163,13 @@
 
             <!-- DAG Tab: Visual Interactive Git Graph -->
             <div id="sidebarDag" class="flex-1 overflow-y-auto p-4 flex flex-col space-y-3">
-                <div class="flex items-center justify-between text-xs text-slate-400 pb-1 border-b border-slate-800/80">
-                    <span class="font-medium text-slate-300 flex items-center gap-1.5">
-                        <i class="fa-solid fa-code-fork text-indigo-400"></i> Directed Acyclic Graph
-                    </span>
-                    <span class="text-[10px] text-cyan-400 font-medium">Click node to Time-Travel</span>
+                <div class="flex items-center justify-between text-xs text-slate-400 pb-1.5 border-b border-slate-800/80">
+                    <div>
+                        <span class="font-bold text-slate-200 flex items-center gap-1.5 text-xs">
+                            <i class="fa-solid fa-code-fork text-indigo-400"></i> Directed Acyclic Graph
+                        </span>
+                        <p class="text-[10px] text-slate-400 mt-0.5">Click any commit node to time-travel to that snapshot</p>
+                    </div>
                 </div>
 
                 <!-- Visual DAG Container with dynamic SVG connector lines and nodes -->
@@ -168,9 +183,14 @@
 
             <!-- Schema Tab Content -->
             <div id="sidebarSchema" class="hidden flex-1 overflow-y-auto p-4 space-y-4">
-                <div class="flex items-center justify-between text-xs text-slate-400 mb-1">
-                    <span class="font-medium text-slate-300">Database Tables</span>
-                    <button onclick="openModal('createTableModal')" class="bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 border border-indigo-500/40 px-2 py-1 rounded text-[11px] flex items-center gap-1 transition">
+                <div class="flex items-center justify-between text-xs text-slate-400 mb-2 border-b border-slate-800/80 pb-2">
+                    <div>
+                        <span class="font-bold text-slate-200 flex items-center gap-1.5 text-xs">
+                            <i class="fa-solid fa-table text-indigo-400"></i> Database Tables
+                        </span>
+                        <p class="text-[10px] text-slate-400 mt-0.5">Schema definitions and column types for active snapshot</p>
+                    </div>
+                    <button onclick="openModal('createTableModal')" class="bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 border border-indigo-500/40 px-2.5 py-1 rounded-md text-[11px] font-medium flex items-center gap-1.5 transition">
                         <i class="fa-solid fa-plus text-[10px]"></i> New Table
                     </button>
                 </div>
@@ -194,23 +214,23 @@
         <main class="flex-1 flex flex-col overflow-y-auto bg-darkbg p-5 space-y-4">
 
             <!-- Time-Travel Notice Banner (shown only when viewing historical snapshot) -->
-            <div id="timeTravelBanner" class="hidden bg-gradient-to-r from-amber-950/90 via-amber-900/60 to-yellow-950/40 border border-amber-500/60 rounded-xl p-4 shadow-xl items-center justify-between animate-fade-in">
+            <div id="timeTravelBanner" class="hidden bg-gradient-to-r from-amber-950/95 via-amber-900/75 to-yellow-950/60 border border-amber-500/80 rounded-xl p-4 shadow-2xl items-center justify-between animate-fade-in ring-1 ring-amber-500/40">
                 <div class="flex items-center space-x-3.5">
-                    <div class="h-10 w-10 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center text-xl shrink-0 border border-amber-500/30">
+                    <div class="h-10 w-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center text-xl shrink-0 border border-amber-500/40 shadow-inner">
                         <i class="fa-solid fa-clock-rotate-left"></i>
                     </div>
                     <div>
                         <div class="text-xs uppercase font-extrabold tracking-wider text-amber-300 flex items-center gap-2">
-                            <span>Time-Travel Mode Active</span>
-                            <span class="bg-amber-500/20 text-amber-200 text-[10px] font-mono px-2 py-0.5 rounded border border-amber-500/40">Read-Only Historical Snapshot</span>
+                            <span>TIME-TRAVEL MODE ACTIVE</span>
+                            <span class="bg-amber-500/25 text-amber-200 text-[10px] font-mono px-2 py-0.5 rounded border border-amber-500/50">Historical Snapshot</span>
                         </div>
                         <div class="text-xs text-amber-100/90 mt-0.5">
-                            Reconstructing database state at commit <code id="timeTravelCommitHash" class="bg-black/40 px-1.5 py-0.5 rounded text-amber-200 font-mono font-bold"></code>
+                            Viewing database state at commit <code id="timeTravelCommitHash" class="bg-black/50 px-2 py-0.5 rounded text-amber-200 font-mono font-bold"></code> &mdash; working state is protected (read-only).
                         </div>
                     </div>
                 </div>
-                <button onclick="exitTimeTravel()" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs px-4 py-2 rounded-lg transition shadow-lg flex items-center gap-1.5">
-                    <i class="fa-solid fa-arrow-left"></i> Exit Time-Travel (Return to HEAD)
+                <button onclick="exitTimeTravel()" class="bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-bold text-xs px-4 py-2 rounded-lg transition shadow-lg flex items-center gap-2 hover:scale-[1.02]">
+                    <i class="fa-solid fa-arrow-left"></i> Return to Latest (HEAD)
                 </button>
             </div>
 
@@ -268,16 +288,25 @@
                             </div>
                         </div>
                         <div class="flex items-center space-x-2">
-                            <button onclick="openModal('createTableModal')" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-3 py-1.5 rounded-lg border border-slate-700 transition flex items-center gap-1.5 shadow-sm">
+                            <button onclick="openModal('createTableModal')" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-3 py-1.5 rounded-lg border border-slate-700 transition flex items-center gap-1.5 shadow-sm" title="Define a new table with typed columns and primary key">
                                 <i class="fa-solid fa-table text-indigo-400 text-xs"></i> + Create Table
                             </button>
-                            <button id="addRowBtn" onclick="openAddRowModal()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium px-3.5 py-1.5 rounded-lg transition flex items-center gap-1.5 shadow-md shadow-emerald-600/20">
-                                <i class="fa-solid fa-plus text-xs"></i> + Add / Edit Row
+                            <button id="addRowBtn" onclick="openAddRowModal()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-3.5 py-1.5 rounded-lg transition flex items-center gap-1.5 shadow-md shadow-emerald-600/20" title="Insert or update a row with validation">
+                                <i class="fa-solid fa-plus text-xs"></i> + Add / Upsert Row
                             </button>
-                            <button onclick="openMergeModal()" class="bg-purple-600 hover:bg-purple-500 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 shadow-md shadow-purple-600/20">
+                            <button onclick="openMergeModal()" class="bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold px-3.5 py-1.5 rounded-lg transition flex items-center gap-1.5 shadow-md shadow-purple-600/20" title="Perform a 3-way merge from another branch">
                                 <i class="fa-solid fa-code-merge text-xs"></i> 3-Way Merge
                             </button>
                         </div>
+                    </div>
+
+                    <!-- Table Subtitle Bar -->
+                    <div class="flex items-center justify-between text-xs text-slate-400 px-1">
+                        <span class="text-[11px] text-slate-400 flex items-center gap-1.5">
+                            <i class="fa-solid fa-database text-indigo-400"></i>
+                            <span>Active snapshot data &bull; Click row action icons (<i class="fa-solid fa-pen-to-square text-[10px] text-cyan-400 mx-0.5"></i> Edit, <i class="fa-solid fa-trash-can text-[10px] text-rose-400 mx-0.5"></i> Delete) to modify records</span>
+                        </span>
+                        <span class="text-[10px] text-slate-500">Immutable SHA-1 row storage</span>
                     </div>
 
                     <!-- Grid Table -->
@@ -309,8 +338,14 @@
                             </button>
                         </div>
                         <div class="text-[11px] text-slate-400">
-                            Evaluates SHA-1 RowBlobs for ADDED (+), DELETED (-), and CHANGED (~) rows
+                            Evaluates SHA-1 RowBlobs for <span class="text-emerald-400 font-semibold">+ ADDED</span>, <span class="text-rose-400 font-semibold">- DELETED</span>, and <span class="text-amber-400 font-semibold">~ CHANGED</span> rows
                         </div>
+                    </div>
+
+                    <!-- Diff Subtitle -->
+                    <div class="text-[11px] text-slate-400 px-1">
+                        <i class="fa-solid fa-code-compare text-cyan-400 mr-1.5"></i>
+                        Compare two branches or commits to detect row modifications at the content-addressable storage layer
                     </div>
 
                     <!-- Diff Cards Container -->
@@ -322,6 +357,15 @@
 
                 <!-- ================= TAB 3: LIVE STORAGE & SHA-1 INSPECTOR ================= -->
                 <div id="viewStorage" class="hidden flex-1 overflow-auto p-4 space-y-4">
+                    <!-- Storage Subtitle -->
+                    <div class="flex items-center justify-between text-xs text-slate-400 px-1">
+                        <span class="text-[11px] text-slate-400 flex items-center gap-1.5">
+                            <i class="fa-solid fa-layer-group text-emerald-400"></i>
+                            <span>Live SHA-1 object store & deduplication metrics across all branches</span>
+                        </span>
+                        <span class="text-[10px] text-slate-500">Path: .timegraph/objects/</span>
+                    </div>
+
                     <!-- Real-Time Metrics Cards -->
                     <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
                         <div class="bg-slate-900/80 border border-slate-800 p-3.5 rounded-xl">
@@ -382,10 +426,13 @@
                 <!-- ================= TAB 4: SQL & VCS CONSOLE ================= -->
                 <div id="viewConsole" class="hidden flex-1 overflow-auto p-4 space-y-4">
                     <div class="flex items-center justify-between border-b border-slate-800 pb-2">
-                        <div class="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                            <i class="fa-solid fa-terminal text-purple-400"></i> Interactive Command Shell
+                        <div>
+                            <div class="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
+                                <i class="fa-solid fa-terminal text-purple-400"></i> Interactive Command Shell
+                            </div>
+                            <p class="text-[10px] text-slate-400 mt-0.5">Execute native SQL DDL/DML and VCS version control statements</p>
                         </div>
-                        <span class="text-[11px] text-slate-400">Ctrl + Enter to run</span>
+                        <span class="text-[11px] text-slate-400 font-mono">Ctrl + Enter to run</span>
                     </div>
 
                     <!-- Console Input -->
@@ -393,13 +440,40 @@
                         <textarea id="commandInput" rows="3"
                                   class="w-full bg-slate-900/90 text-indigo-100 font-mono text-xs rounded-lg p-3.5 border border-slate-700/80 focus:border-indigo-500 focus:outline-none"
                                   placeholder="Type SQL (SELECT * FROM employees, UPSERT, DELETE) or VCS command (COMMIT, DIFF, MERGE)..."></textarea>
-                        <div class="flex justify-between items-center">
-                            <div class="flex items-center space-x-1.5">
-                                <span class="text-[11px] text-slate-500">Quick:</span>
-                                <button onclick="setQuery('SELECT * FROM employees')" class="text-[11px] bg-slate-800 hover:bg-slate-700 text-indigo-300 px-2 py-0.5 rounded font-mono">SELECT *</button>
-                                <button onclick="setQuery('DIFF main salary-hike employees')" class="text-[11px] bg-slate-800 hover:bg-slate-700 text-cyan-300 px-2 py-0.5 rounded font-mono">DIFF</button>
-                                <button onclick="setQuery('MERGE salary-hike')" class="text-[11px] bg-slate-800 hover:bg-slate-700 text-emerald-300 px-2 py-0.5 rounded font-mono">MERGE</button>
-                                <button onclick="setQuery('LOG')" class="text-[11px] bg-slate-800 hover:bg-slate-700 text-purple-300 px-2 py-0.5 rounded font-mono">LOG</button>
+                        
+                        <!-- Inline Syntax Hint Strip -->
+                        <div class="flex items-center flex-wrap gap-1.5 py-1 text-[11px] text-slate-400 bg-slate-900/40 p-2 rounded-lg border border-slate-800">
+                            <span class="text-slate-500 font-semibold text-[10px] uppercase tracking-wide mr-1 flex items-center gap-1"><i class="fa-solid fa-lightbulb text-amber-400/80"></i>Syntax:</span>
+                            <button type="button" onclick="insertSyntax('SELECT')" class="bg-slate-800/90 hover:bg-slate-700 text-slate-300 border border-slate-700/80 px-2 py-0.5 rounded font-mono text-[10px] transition" title="Click to insert SELECT template">
+                                <span class="text-indigo-400 font-bold">SELECT</span> * FROM &lt;tbl&gt; [AS_OF &lt;hash&gt;]
+                            </button>
+                            <button type="button" onclick="insertSyntax('UPSERT')" class="bg-slate-800/90 hover:bg-slate-700 text-slate-300 border border-slate-700/80 px-2 py-0.5 rounded font-mono text-[10px] transition" title="Click to insert UPSERT template">
+                                <span class="text-emerald-400 font-bold">UPSERT</span> INTO &lt;tbl&gt; (...) VALUES (...)
+                            </button>
+                            <button type="button" onclick="insertSyntax('DELETE')" class="bg-slate-800/90 hover:bg-slate-700 text-slate-300 border border-slate-700/80 px-2 py-0.5 rounded font-mono text-[10px] transition" title="Click to insert DELETE template">
+                                <span class="text-rose-400 font-bold">DELETE</span> FROM &lt;tbl&gt; WHERE id=&lt;val&gt;
+                            </button>
+                            <button type="button" onclick="insertSyntax('DIFF')" class="bg-slate-800/90 hover:bg-slate-700 text-slate-300 border border-slate-700/80 px-2 py-0.5 rounded font-mono text-[10px] transition" title="Click to insert DIFF template">
+                                <span class="text-cyan-400 font-bold">DIFF</span> &lt;ref1&gt; &lt;ref2&gt; &lt;tbl&gt;
+                            </button>
+                            <button type="button" onclick="insertSyntax('MERGE')" class="bg-slate-800/90 hover:bg-slate-700 text-slate-300 border border-slate-700/80 px-2 py-0.5 rounded font-mono text-[10px] transition" title="Click to insert MERGE template">
+                                <span class="text-purple-400 font-bold">MERGE</span> &lt;branch&gt;
+                            </button>
+                            <button type="button" onclick="insertSyntax('LOG')" class="bg-slate-800/90 hover:bg-slate-700 text-slate-300 border border-slate-700/80 px-2 py-0.5 rounded font-mono text-[10px] transition" title="Click to insert LOG template">
+                                <span class="text-amber-400 font-bold">LOG</span>
+                            </button>
+                        </div>
+
+                        <!-- Quick Presets Bar and Execute Button -->
+                        <div class="flex justify-between items-center flex-wrap gap-2 pt-1">
+                            <div class="flex items-center space-x-1.5 flex-wrap gap-y-1">
+                                <span class="text-[11px] text-slate-500 font-medium">Quick Presets:</span>
+                                <button type="button" onclick="setQuery('SELECT * FROM ' + (selectedTableName || 'employees'))" class="text-[11px] bg-slate-800 hover:bg-slate-700 text-indigo-300 hover:text-white px-2 py-0.5 rounded font-mono border border-slate-700 transition">SELECT *</button>
+                                <button type="button" onclick="insertUpsertPreset()" class="text-[11px] bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 hover:text-white px-2.5 py-0.5 rounded font-mono border border-emerald-500/40 transition flex items-center gap-1 shadow-sm"><i class="fa-solid fa-plus text-[9px]"></i> UPSERT Row</button>
+                                <button type="button" onclick="setQuery('DIFF main salary-hike ' + (selectedTableName || 'employees'))" class="text-[11px] bg-slate-800 hover:bg-slate-700 text-cyan-300 hover:text-white px-2 py-0.5 rounded font-mono border border-slate-700 transition">DIFF</button>
+                                <button type="button" onclick="setQuery('MERGE salary-hike')" class="text-[11px] bg-slate-800 hover:bg-slate-700 text-purple-300 hover:text-white px-2 py-0.5 rounded font-mono border border-slate-700 transition">MERGE</button>
+                                <button type="button" onclick="setQuery('LOG')" class="text-[11px] bg-slate-800 hover:bg-slate-700 text-amber-300 hover:text-white px-2 py-0.5 rounded font-mono border border-slate-700 transition">LOG</button>
+                                <button type="button" onclick="setQuery('SHOW TABLES')" class="text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white px-2 py-0.5 rounded font-mono border border-slate-700 transition">SHOW TABLES</button>
                             </div>
                             <button id="runBtn" onclick="executeCurrentCommand()" class="bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs px-4 py-1.5 rounded-lg transition shadow-md flex items-center gap-1.5">
                                 <i class="fa-solid fa-play text-[10px]"></i> Execute
@@ -696,6 +770,54 @@
             });
         });
 
+        /* ================= TOAST NOTIFICATION SYSTEM ================= */
+        function showToast(title, message, type = 'info') {
+            const container = document.getElementById('toastContainer');
+            if (!container) return;
+
+            const toast = document.createElement('div');
+            const typeConfig = {
+                success: {
+                    bg: 'bg-emerald-950/90 border-emerald-500/60 text-emerald-200',
+                    icon: 'fa-circle-check text-emerald-400'
+                },
+                error: {
+                    bg: 'bg-rose-950/90 border-rose-500/60 text-rose-200',
+                    icon: 'fa-circle-xmark text-rose-400'
+                },
+                warning: {
+                    bg: 'bg-amber-950/90 border-amber-500/60 text-amber-200',
+                    icon: 'fa-triangle-exclamation text-amber-400'
+                },
+                info: {
+                    bg: 'bg-slate-900/95 border-indigo-500/60 text-indigo-200',
+                    icon: 'fa-circle-info text-indigo-400'
+                }
+            };
+
+            const cfg = typeConfig[type] || typeConfig.info;
+
+            toast.className = `pointer-events-auto rounded-xl border p-3.5 shadow-2xl backdrop-blur-md flex items-start space-x-3 toast-enter ${cfg.bg} transition-all duration-300`;
+            toast.innerHTML = `
+                <div class="text-base shrink-0 mt-0.5"><i class="fa-solid ${cfg.icon}"></i></div>
+                <div class="flex-1 min-w-0 pr-1">
+                    <div class="text-xs font-bold text-white leading-tight">${escapeHtml(title)}</div>
+                    <div class="text-[11px] text-slate-300 mt-0.5 leading-snug">${escapeHtml(message)}</div>
+                </div>
+                <button onclick="this.parentElement.remove()" class="text-slate-400 hover:text-white text-xs shrink-0">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            `;
+
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.classList.remove('toast-enter');
+                toast.classList.add('toast-exit');
+                setTimeout(() => toast.remove(), 260);
+            }, 3500);
+        }
+
         /* ================= AUTHENTICATION & COLLABORATION SESSIONS ================= */
         async function checkAuthStatus() {
             try {
@@ -772,11 +894,12 @@
                     currentUser = data;
                     updateUserUi(data);
                     closeModal('authModal');
+                    showToast("Session Active", `Signed in as ${data.fullName || data.username} (${data.role || 'Contributor'})`, "success");
                 } else {
-                    alert(data.message || "Login failed");
+                    showToast("Login Failed", data.message || "Invalid credentials", "error");
                 }
             } catch (err) {
-                alert("Login error: " + err.message);
+                showToast("Login Error", err.message, "error");
             }
         }
 
@@ -798,6 +921,7 @@
                     updateUserUi(data);
                     errDiv.classList.add('hidden');
                     closeModal('authModal');
+                    showToast("Session Active", `Signed in as ${data.fullName || data.username}`, "success");
                 } else {
                     errDiv.textContent = data.message || "Invalid credentials";
                     errDiv.classList.remove('hidden');
@@ -827,6 +951,7 @@
                     updateUserUi(data);
                     errDiv.classList.add('hidden');
                     closeModal('authModal');
+                    showToast("Account Created", `Signed in as ${data.fullName || data.username}`, "success");
                 } else {
                     errDiv.textContent = data.message || "Registration failed";
                     errDiv.classList.remove('hidden');
@@ -843,6 +968,7 @@
                 await fetch('/api/auth/logout', { method: 'POST' });
                 currentUser = null;
                 updateUserUi(null);
+                showToast("Signed Out", "Switched to anonymous session. Sign in with another account.", "info");
                 openModal('authModal');
             } else {
                 openModal('authModal');
@@ -897,14 +1023,17 @@
                 headDisplay.textContent = 'None';
             }
 
-            // Staged badge
+            // Staged badge & commit button pulsing highlight
             const stagedBadge = document.getElementById('stagedBadge');
+            const commitBtn = document.getElementById('commitBtn');
             if (state.isDirty) {
                 stagedBadge.classList.remove('hidden');
                 stagedBadge.classList.add('flex');
+                commitBtn.classList.add('ring-2', 'ring-amber-400', 'ring-offset-2', 'ring-offset-slate-900', 'animate-pulse');
             } else {
                 stagedBadge.classList.add('hidden');
                 stagedBadge.classList.remove('flex');
+                commitBtn.classList.remove('ring-2', 'ring-amber-400', 'ring-offset-2', 'ring-offset-slate-900', 'animate-pulse');
             }
 
             // Render Visual SVG DAG Graph
@@ -1105,7 +1234,7 @@
 
             if (rows.length === 0) {
                 header.innerHTML = '<tr><th class="p-3">Columns</th></tr>';
-                body.innerHTML = '<tr><td class="p-8 text-center text-slate-500 font-sans">Table is currently empty (0 rows). Click "+ Add / Edit Row" above to insert data.</td></tr>';
+                body.innerHTML = '<tr><td class="p-8 text-center text-slate-500 font-sans">Table is currently empty (0 rows). Click "+ Add / Upsert Row" above to insert data.</td></tr>';
                 return;
             }
 
@@ -1144,10 +1273,10 @@
                     <tr class="${rowBg} hover:bg-indigo-950/20 transition group">
                         ${cells}
                         <td class="px-4 py-2.5 text-right space-x-1 shrink-0">
-                            <button onclick="openEditRowModal('${rowJsonEscaped}')" class="text-slate-400 hover:text-cyan-300 p-1 rounded" title="Edit Row">
+                            <button onclick="openEditRowModal('${rowJsonEscaped}')" class="text-slate-400 hover:text-cyan-300 p-1.5 rounded transition hover:bg-slate-800" title="Edit this row">
                                 <i class="fa-solid fa-pen-to-square"></i>
                             </button>
-                            <button onclick="deleteRowGui('${escapeHtml(String(pkVal))}')" class="text-slate-400 hover:text-rose-400 p-1 rounded" title="Delete Row">
+                            <button onclick="deleteRowGui('${escapeHtml(String(pkVal))}')" class="text-slate-400 hover:text-rose-400 p-1.5 rounded transition hover:bg-slate-800" title="Delete this row">
                                 <i class="fa-solid fa-trash-can"></i>
                             </button>
                         </td>
@@ -1183,7 +1312,7 @@
         async function submitCreateTableGui() {
             const tableName = document.getElementById('newTableName').value.trim();
             if (!tableName) {
-                alert("Please specify a table name.");
+                showToast("Missing Name", "Please specify a table name.", "warning");
                 return;
             }
 
@@ -1200,7 +1329,7 @@
             });
 
             if (cols.length === 0) {
-                alert("Please define at least one column.");
+                showToast("Missing Columns", "Please define at least one column.", "warning");
                 return;
             }
 
@@ -1211,12 +1340,13 @@
             selectedTableName = tableName;
             await fetchState();
             await fetchStorageStats();
+            showToast("Table Created", `Table '${tableName}' created successfully with ${cols.length} columns`, "success");
         }
 
         // GUI: Add / Edit Row Modal
         function openAddRowModal() {
             if (!selectedTableName || !currentState || !currentState.tables[selectedTableName]) {
-                alert("Please select or create a table first.");
+                showToast("No Table Selected", "Please select or create a table first.", "warning");
                 return;
             }
             const table = currentState.tables[selectedTableName];
@@ -1301,6 +1431,7 @@
             await runCommand(sql);
             await fetchState();
             await fetchStorageStats();
+            showToast("Row Upserted", `Saved row into table '${selectedTableName}'`, "success");
         }
 
         async function deleteRowGui(pkVal) {
@@ -1309,6 +1440,7 @@
             await runCommand(sql);
             await fetchState();
             await fetchStorageStats();
+            showToast("Row Deleted", `Deleted row (PK: ${pkVal}) from table '${selectedTableName}'`, "info");
         }
 
         /* ================= 3. LIVE STORAGE & SHA-1 INSPECTOR ================= */
@@ -1363,7 +1495,7 @@
                 row.innerHTML = `
                     <td class="p-3 font-mono text-xs">
                         <span class="text-cyan-400 font-bold">${prefix}</span>/<span class="text-slate-300">${remainder}</span>
-                        <button onclick="navigator.clipboard.writeText('${obj.hash}')" class="text-slate-500 hover:text-white ml-2" title="Copy full SHA-1 hash">
+                        <button onclick="navigator.clipboard.writeText('${obj.hash}'); showToast('SHA-1 Copied', '${obj.hash}', 'info');" class="text-slate-500 hover:text-white ml-2" title="Copy full SHA-1 hash">
                             <i class="fa-regular fa-copy text-[10px]"></i>
                         </button>
                     </td>
@@ -1418,7 +1550,7 @@
             const table = document.getElementById('diffTableSelect').value;
 
             if (!ref1 || !ref2 || !table) {
-                alert("Please select two commits/branches and a table to diff.");
+                showToast("Missing Parameters", "Please select two commits/branches and a table to diff.", "warning");
                 return;
             }
 
@@ -1574,6 +1706,7 @@
             await runCommand(`MERGE ${target}`);
             await fetchState();
             await fetchStorageStats();
+            showToast("Branch Merged", `Merged branch '${target}' into '${currentState.currentBranch}'`, "success");
         }
 
         /* ================= VCS TIME-TRAVEL & BRANCH SWITCHING ================= */
@@ -1590,6 +1723,7 @@
             document.getElementById('commandInput').value = cmd;
             runCommand(cmd);
             renderVisualDag(currentState ? currentState.commits || [] : [], currentState ? currentState.headCommitHash : null);
+            showToast("Time-Travel Mode", `Viewing historical state at commit ${commitHash.substring(0, 8)}`, "warning");
         }
 
         function exitTimeTravel() {
@@ -1601,6 +1735,7 @@
             if (selectedTableName) {
                 runCommand(`SELECT * FROM ${selectedTableName}`);
             }
+            showToast("Returned to HEAD", "Exited Time-Travel mode. Viewing latest HEAD commit.", "info");
         }
 
         async function switchBranch(branchName) {
@@ -1608,12 +1743,13 @@
             await runCommand(`CHECKOUT ${branchName}`);
             await fetchState();
             await fetchStorageStats();
+            showToast("Branch Switched", `Switched active branch to '${branchName}'`, "info");
         }
 
         function copyHeadHash() {
             if (currentState && currentState.headCommitHash) {
                 navigator.clipboard.writeText(currentState.headCommitHash);
-                alert("Copied full HEAD commit hash to clipboard: " + currentState.headCommitHash);
+                showToast("HEAD Hash Copied", currentState.headCommitHash, "info");
             }
         }
 
@@ -1621,6 +1757,56 @@
         function setQuery(sql) {
             document.getElementById('commandInput').value = sql;
             switchResultTab('console');
+        }
+
+        function insertSyntax(type) {
+            const table = selectedTableName || 'employees';
+            let snippet = '';
+            switch(type) {
+                case 'SELECT':
+                    snippet = `SELECT * FROM ${table}`;
+                    break;
+                case 'UPSERT':
+                    snippet = `UPSERT INTO ${table} (id, name, department, salary, active) VALUES (7, 'Grace Hopper', 'Engineering', 135000, true)`;
+                    break;
+                case 'DELETE':
+                    snippet = `DELETE FROM ${table} WHERE id = 7`;
+                    break;
+                case 'DIFF':
+                    snippet = `DIFF main salary-hike ${table}`;
+                    break;
+                case 'MERGE':
+                    snippet = `MERGE salary-hike`;
+                    break;
+                case 'LOG':
+                    snippet = `LOG`;
+                    break;
+                default:
+                    snippet = `SELECT * FROM ${table}`;
+            }
+            setQuery(snippet);
+            showToast("Syntax Template", `Loaded ${type} syntax template in SQL Console`, "info");
+        }
+
+        function insertUpsertPreset() {
+            const table = selectedTableName || 'employees';
+            let sql = '';
+            if (currentState && currentState.tables && currentState.tables[table]) {
+                const t = currentState.tables[table];
+                const cols = t.columns.map(c => c.name);
+                const sampleVals = t.columns.map((c, i) => {
+                    if (c.primaryKey) return (t.rowCount + 1);
+                    if (c.type === 'INT') return 100 + i;
+                    if (c.type === 'DOUBLE') return 95000.0;
+                    if (c.type === 'BOOLEAN') return 'true';
+                    return `'Grace Hopper'`;
+                });
+                sql = `UPSERT INTO ${table} (${cols.join(', ')}) VALUES (${sampleVals.join(', ')})`;
+            } else {
+                sql = `UPSERT INTO employees (id, name, department, salary, active) VALUES (7, 'Grace Hopper', 'Engineering', 135000, true)`;
+            }
+            setQuery(sql);
+            showToast("UPSERT Preset", `Loaded sample row for table '${table}'`, "info");
         }
 
         async function executeCurrentCommand() {
@@ -1660,6 +1846,7 @@
             } catch (err) {
                 statusMsg.textContent = "Network error: " + err.message;
                 document.getElementById('rawOutput').textContent = "Network Error: " + err.message;
+                showToast("Network Error", err.message, "error");
             }
         }
 
@@ -1672,12 +1859,14 @@
             if (result.status === 'ERROR') {
                 statusMsg.className = "text-xs text-rose-400 font-medium truncate max-w-sm";
                 switchResultTab('console');
+                showToast("Execution Error", result.message || "Command failed", "error");
                 return;
             }
 
             if (result.status === 'CONFLICT') {
                 statusMsg.className = "text-xs text-rose-400 font-bold truncate max-w-sm";
                 showMergeConflict(result.conflicts || [], result.message);
+                showToast("Merge Conflict", result.message || "3-Way Merge conflict detected", "warning");
                 return;
             }
 
@@ -1703,6 +1892,7 @@
             exitTimeTravel();
             await fetchState();
             await fetchStorageStats();
+            showToast("Repository Reset", "Reset database back to initial sample state", "info");
         }
 
         async function clearFreshDatabase() {
@@ -1711,6 +1901,7 @@
             exitTimeTravel();
             await fetchState();
             await fetchStorageStats();
+            showToast("Repository Cleared", "Cleared all tables for build-from-scratch demo", "warning");
         }
 
         // Tab Switchers
@@ -1784,6 +1975,7 @@
             await runCommand(`BRANCH ${name}`);
             await fetchState();
             await fetchStorageStats();
+            showToast("Branch Created", `Created branch '${name}' from HEAD snapshot`, "success");
         }
 
         async function submitCommit() {
@@ -1794,6 +1986,7 @@
             await runCommand(`COMMIT "${msg}"`);
             await fetchState();
             await fetchStorageStats();
+            showToast("Snapshot Committed", `Committed "${msg}"`, "success");
         }
 
         function formatBytes(bytes) {
